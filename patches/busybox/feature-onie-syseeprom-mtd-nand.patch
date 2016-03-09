@@ -1,0 +1,409 @@
+From b6a45721ddb65ff89215682973a2cab8227327b5 Mon Sep 17 00:00:00 2001
+From: "dave.hu" <dave.hu@deltaww.com.cn>
+Date: Fri, 19 Feb 2016 18:47:07 +0800
+Subject: [PATCH] onie Add mtd nand flash support.
+
+---
+ miscutils/Config.src       |    6 +-
+ miscutils/sys_eeprom_mtd.c |  329 ++++++++++++++++++++++++++++++++++++++------
+ 2 files changed, 292 insertions(+), 43 deletions(-)
+
+diff --git a/miscutils/Config.src b/miscutils/Config.src
+index 91a9cef..efd973b 100644
+--- a/miscutils/Config.src
++++ b/miscutils/Config.src
+@@ -702,7 +702,7 @@ config SYS_EEPROM_SYSFS_FILE_PATH
+ config SYS_EEPROM_OFFSET
+ 	int "offset"
+ 	range 0 0 if SYS_EEPROM_DEVICE_DISK
+-	range 0 65536
++	range 0 1048576
+ 	default 0
+ 	depends on SYS_EEPROM
+ 	help
+@@ -711,7 +711,7 @@ config SYS_EEPROM_OFFSET
+ config SYS_EEPROM_SIZE
+ 	int "usable eeprom size in byte"
+ 	range 2048 2048 if SYS_EEPROM_DEVICE_DISK
+-	range 0 2048
++	range 0 1048576
+ 	default 2048 if SYS_EEPROM_DEVICE_DISK
+ 	default 0
+ 	depends on SYS_EEPROM
+@@ -721,7 +721,7 @@ config SYS_EEPROM_SIZE
+ config SYS_EEPROM_MAX_SIZE
+ 	int "total size in byte"
+ 	range 2048 2048 if SYS_EEPROM_DEVICE_DISK
+-	range 256 65536
++	range 256 1048576
+ 	default 2048
+ 	depends on SYS_EEPROM
+ 	help
+diff --git a/miscutils/sys_eeprom_mtd.c b/miscutils/sys_eeprom_mtd.c
+index 119d77c..9a2aa7c 100644
+--- a/miscutils/sys_eeprom_mtd.c
++++ b/miscutils/sys_eeprom_mtd.c
+@@ -3,6 +3,283 @@
+ #include "sys_eeprom.h"
+ #include <mtd/mtd-user.h>
+ 
++static int erase_size = 0;
++static int envsector  = 0;
++
++#define DEVNAME(x)	CONFIG_SYS_EEPROM_MTD_DEVICE
++#define DEVESIZE(x)	erase_size
++#define DEVOFFSET(x)	CONFIG_SYS_EEPROM_OFFSET
++#define ENVSECTORS(x)	envsector	
++
++
++/*
++ * Test for bad block on NAND, just returns 0 on NOR, on NAND:
++ * 0	- block is good
++ * > 0	- block is bad
++ * < 0	- failed to test
++ */
++static int flash_bad_block (int fd, uint8_t mtd_type, loff_t *blockstart)
++{
++	if (mtd_type == MTD_NANDFLASH) {
++		int badblock = ioctl (fd, MEMGETBADBLOCK, blockstart);
++
++		if (badblock < 0) {
++			perror ("Cannot read bad block mark");
++			return badblock;
++		}
++
++		if (badblock) {
++#ifdef DEBUG
++			fprintf (stderr, "Bad block at 0x%llx, "
++				 "skipping\n", *blockstart);
++#endif
++			return badblock;
++		}
++	}
++
++	return 0;
++}
++
++
++/*
++ * Read data from flash at an offset into a provided buffer. On NAND it skips
++ * bad blocks but makes sure it stays within ENVSECTORS (dev) starting from
++ * the DEVOFFSET (dev) block. On NOR the loop is only run once.
++ */
++static int flash_read_buf (int dev, int fd, void *buf, size_t count,
++			   off_t offset, uint8_t mtd_type)
++{
++	size_t blocklen;	/* erase / write length - one block on NAND,
++				   0 on NOR */
++	size_t processed = 0;	/* progress counter */
++	size_t readlen = count;	/* current read length */
++	off_t top_of_range;	/* end of the last block we may use */
++	off_t block_seek;	/* offset inside the current block to the start
++				   of the data */
++	loff_t blockstart;	/* running start of the current block -
++				   MEMGETBADBLOCK needs 64 bits */
++	int rc;
++
++	/*
++	 * Start of the first block to be read, relies on the fact, that
++	 * erase sector size is always a power of 2
++	 */
++	blockstart = offset & ~(DEVESIZE (dev) - 1);
++
++	/* Offset inside a block */
++	block_seek = offset - blockstart;
++
++	if (mtd_type == MTD_NANDFLASH) {
++		/*
++		 * NAND: calculate which blocks we are reading. We have
++		 * to read one block at a time to skip bad blocks.
++		 */
++		blocklen = DEVESIZE (dev);
++
++		/*
++		 * To calculate the top of the range, we have to use the
++		 * global DEVOFFSET (dev), which can be different from offset
++		 */
++		top_of_range = (DEVOFFSET (dev) & ~(blocklen - 1)) +
++			ENVSECTORS (dev) * blocklen;
++
++		/* Limit to one block for the first read */
++		if (readlen > blocklen - block_seek)
++			readlen = blocklen - block_seek;
++	} else {
++		blocklen = 0;
++		top_of_range = offset + count;
++	}
++
++	/* This only runs once on NOR flash */
++	while (processed < count) {
++		rc = flash_bad_block (fd, mtd_type, &blockstart);
++		if (rc < 0)		/* block test failed */
++			return -1;
++
++		if (blockstart + block_seek + readlen > top_of_range) {
++			/* End of range is reached */
++			fprintf (stderr,
++				 "Too few good blocks within range\n");
++			return -1;
++		}
++
++		if (rc) {		/* block is bad */
++			blockstart += blocklen;
++			continue;
++		}
++
++		/*
++		 * If a block is bad, we retry in the next block at the same
++		 * offset - see common/env_nand.c::writeenv()
++		 */
++		lseek (fd, blockstart + block_seek, SEEK_SET);
++
++		rc = read (fd, buf + processed, readlen);
++		if (rc != readlen) {
++			fprintf (stderr, "Read error on %s: %s\n",
++				 DEVNAME (dev), strerror (errno));
++			return -1;
++		}
++#ifdef DEBUG
++		fprintf (stderr, "Read 0x%x bytes at 0x%llx\n",
++			 rc, blockstart + block_seek);
++#endif
++		processed += readlen;
++		readlen = min (blocklen, count - processed);
++		block_seek = 0;
++		blockstart += blocklen;
++	}
++
++	return processed;
++}
++
++/*
++ * Write count bytes at offset, but stay within ENVSETCORS (dev) sectors of
++ * DEVOFFSET (dev). Similar to the read case above, on NOR we erase and write
++ * the whole data at once.
++ */
++static int flash_write_buf (int dev, int fd, void *buf, size_t count,
++			    off_t offset, uint8_t mtd_type)
++{
++	void *data;
++	struct erase_info_user erase;
++	size_t blocklen;	/* length of NAND block / NOR erase sector */
++	size_t erase_len;	/* whole area that can be erased - may include
++				   bad blocks */
++	size_t erasesize;	/* erase / write length - one block on NAND,
++				   whole area on NOR */
++	size_t processed = 0;	/* progress counter */
++	size_t write_total;	/* total size to actually write - excludinig
++				   bad blocks */
++	off_t erase_offset;	/* offset to the first erase block (aligned)
++				   below offset */
++	off_t block_seek;	/* offset inside the erase block to the start
++				   of the data */
++	off_t top_of_range;	/* end of the last block we may use */
++	loff_t blockstart;	/* running start of the current block -
++				   MEMGETBADBLOCK needs 64 bits */
++	int rc;
++
++	blocklen = DEVESIZE (dev);
++
++	/* Erase sector size is always a power of 2 */
++	top_of_range = (DEVOFFSET (dev) & ~(blocklen - 1)) +
++		ENVSECTORS (dev) * blocklen;
++
++	erase_offset = offset & ~(blocklen - 1);
++
++	/* Maximum area we may use */
++	erase_len = top_of_range - erase_offset;
++
++	blockstart = erase_offset;
++	/* Offset inside a block */
++	block_seek = offset - erase_offset;
++
++	/*
++	 * Data size we actually have to write: from the start of the block
++	 * to the start of the data, then count bytes of data, and to the
++	 * end of the block
++	 */
++	write_total = (block_seek + count + blocklen - 1) & ~(blocklen - 1);
++
++	/*
++	 * Support data anywhere within erase sectors: read out the complete
++	 * area to be erased, replace the environment image, write the whole
++	 * block back again.
++	 */
++	if (write_total > count) {
++		data = malloc (erase_len);
++		if (!data) {
++			fprintf (stderr,
++				 "Cannot malloc %u bytes: %s\n",
++				 erase_len, strerror (errno));
++			return -1;
++		}
++
++		rc = flash_read_buf (dev, fd, data, write_total, erase_offset,
++				     mtd_type);
++		if (write_total != rc)
++			return -1;
++
++		/* Overwrite the old environment */
++		memcpy (data + block_seek, buf, count);
++	} else {
++		/*
++		 * We get here, iff offset is block-aligned and count is a
++		 * multiple of blocklen - see write_total calculation above
++		 */
++		data = buf;
++	}
++
++	if (mtd_type == MTD_NANDFLASH) {
++		/*
++		 * NAND: calculate which blocks we are writing. We have
++		 * to write one block at a time to skip bad blocks.
++		 */
++		erasesize = blocklen;
++	} else {
++		erasesize = erase_len;
++	}
++
++	erase.length = erasesize;
++
++	/* This only runs once on NOR flash */
++	while (processed < write_total) {
++		rc = flash_bad_block (fd, mtd_type, &blockstart);
++		if (rc < 0)		/* block test failed */
++			return rc;
++
++		if (blockstart + erasesize > top_of_range) {
++			fprintf (stderr, "End of range reached, aborting\n");
++			return -1;
++		}
++
++		if (rc) {		/* block is bad */
++			blockstart += blocklen;
++			continue;
++		}
++
++		erase.start = blockstart;
++		ioctl (fd, MEMUNLOCK, &erase);
++
++		if (ioctl (fd, MEMERASE, &erase) != 0) {
++			fprintf (stderr, "MTD erase error on %s: %s\n",
++				 DEVNAME (dev),
++				 strerror (errno));
++			return -1;
++		}
++
++		if (lseek (fd, blockstart, SEEK_SET) == -1) {
++			fprintf (stderr,
++				 "Seek error on %s: %s\n",
++				 DEVNAME (dev), strerror (errno));
++			return -1;
++		}
++
++#ifdef DEBUG
++		printf ("Write 0x%x bytes at 0x%llx\n", erasesize, blockstart);
++#endif
++		if (write (fd, data + processed, erasesize) != erasesize) {
++			fprintf (stderr, "Write error on %s: %s\n",
++				 DEVNAME (dev), strerror (errno));
++			return -1;
++		}
++
++		ioctl (fd, MEMLOCK, &erase);
++
++		processed  += blocklen;
++		block_seek = 0;
++		blockstart += blocklen;
++	}
++
++	if (write_total > count)
++		free (data);
++
++	return processed;
++}
++
++
+ /*
+  * read_sys_eeprom - read the hwinfo from MTD EEPROM
+  */
+@@ -30,25 +307,18 @@ int read_sys_eeprom(void *eeprom_data, int offset, int len)
+         return -1;
+     }
+ 
+-    if (mtdinfo.type != MTD_NORFLASH) {
++    if (mtdinfo.type != MTD_NORFLASH && mtdinfo.type != MTD_NANDFLASH) {
+         fprintf (stderr, "Unsupported flash type %u\n", mtdinfo.type);
+         return -1;
+     }
++    erase_size = mtdinfo.erasesize;
++    envsector  = CONFIG_SYS_EEPROM_MAX_SIZE / erase_size ;
+ 
+-    if (lseek (fd, offset + SYS_EEPROM_OFFSET, SEEK_SET) == -1) {
+-	fprintf (stderr, "Seek error on %s: %s\n",
+-		SYS_EEPROM_MTD_DEVICE, strerror (errno));
+-	return -1;
+-    }
+ 
+-    rc = read (fd, c, len);
+-    if (rc != len) {
+-        fprintf (stderr, "Read error on %s: %s\n",
+-		SYS_EEPROM_MTD_DEVICE, strerror (errno));
+-        return -1;
+-    }
++    /* read */
++    rc = flash_read_buf (-1, fd, eeprom_data, len, offset, mtdinfo.type);
+ 
+-    if (close (fd)) {
++    if (close (fd) || (rc <= 0)) {
+ 	fprintf (stderr, "I/O error on %s: %s\n",
+ 		SYS_EEPROM_MTD_DEVICE, strerror (errno));
+ 	return -1;
+@@ -85,38 +355,17 @@ int write_sys_eeprom(void *eeprom_data, int len)
+         return -1;
+     }
+ 
+-    if (mtdinfo.type != MTD_NORFLASH) {
++    if (mtdinfo.type != MTD_NORFLASH && mtdinfo.type != MTD_NANDFLASH) {
+         fprintf (stderr, "Unsupported flash type %u\n", mtdinfo.type);
+         return -1;
+     }
++    erase_size = mtdinfo.erasesize;
++    envsector  = CONFIG_SYS_EEPROM_MAX_SIZE / erase_size ;
+ 
+-    /*
+-     * erase entire sys_eeprom
+-     */
+-    erase.length = mtdinfo.size;
+-    erase.start = 0;
+-    ioctl (fd, MEMUNLOCK, &erase);
+-
+-    if (ioctl (fd, MEMERASE, &erase) != 0) {
+-	fprintf (stderr, "MTD erase error on %s: %s\n",
+-		SYS_EEPROM_MTD_DEVICE, strerror (errno));
+-	return -1;
+-    }
+-
+-    if (lseek (fd, SYS_EEPROM_OFFSET, SEEK_SET) == -1) {
+-	fprintf (stderr, "Seek error on %s: %s\n",
+-		SYS_EEPROM_MTD_DEVICE, strerror (errno));
+-	return -1;
+-    }
+-
+-    rc = write (fd, c, len);
+-    if (rc != len) {
+-        fprintf (stderr, "Write error on %s: %s\n",
+-		SYS_EEPROM_MTD_DEVICE, strerror (errno));
+-        return -1;
+-    }
++    /* erase & write */
++    rc = flash_write_buf (-1, fd, eeprom_data, len, 0, mtdinfo.type);
+ 
+-    if (close (fd)) {
++    if (close (fd) || (rc <= 0)) {
+ 	fprintf (stderr, "I/O error on %s: %s\n",
+ 		SYS_EEPROM_MTD_DEVICE, strerror (errno));
+ 	return -1;
+-- 
+1.7.9.5
+
