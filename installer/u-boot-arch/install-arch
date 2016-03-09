@@ -9,10 +9,29 @@
 install_onie_kernel()
 {
     echo "Updating ONIE kernel ..."
-    flashcp -v onie.itb /dev/mtd-onie || {
-        echo "ERROR: Updating ONIE kernel failed."
-        exit 1
-    }
+
+    flash_type=$(mtdinfo /dev/mtd-onie | grep Type | awk -F " " '{print $2}')
+
+    case $flash_type in
+        nand)
+            flash_erase /dev/mtd-onie 0 0 || {
+                echo "ERROR: Erase ONIE kernel failed."
+                exit 1
+            }
+
+            nandwrite -p /dev/mtd-onie onie.itb || {
+                echo "ERROR: Updating ONIE kernel failed."
+                exit 1
+            }
+            ;;
+      
+        *)
+            flashcp -v onie.itb /dev/mtd-onie || {
+                echo "ERROR: Updating ONIE kernel failed."
+                exit 1
+            }
+            ;;
+    esac
 }
 
 # Default implementation for updating u-boot
@@ -20,15 +39,49 @@ install_onie_uboot()
 {
     # install u-boot
     echo "Updating ONIE U-Boot ..."
-    flashcp -v %%UPDATER_UBOOT_NAME%% /dev/mtd-uboot || {
-        echo "ERROR: Updating ONIE U-Boot failed."
-        exit 1
-    }
+
+    flash_type=$(mtdinfo /dev/mtd-onie | grep Type | awk -F " " '{print $2}')
+
+    case $flash_type in
+        nand)
+            flash_erase /dev/mtd-uboot 0 0 || {
+                echo "ERROR: Erase ONIE U-Boot failed."
+                exit 1
+            }
+
+            nandwrite -p /dev/mtd-uboot %%UPDATER_UBOOT_NAME%% || {
+                echo "ERROR: Updating ONIE U-Boot failed."
+                exit 1
+            }
+            ;;
+      
+        *)
+            flashcp -v %%UPDATER_UBOOT_NAME%% /dev/mtd-uboot || {
+                echo "ERROR: Updating ONIE U-Boot failed."
+                exit 1
+            }
+
+            ;;
+    esac
+
 }
 
 # Default implementation for updating u-boot env
 update_uboot_env()
 {
+
+    flash_type=$(mtdinfo /dev/mtd-onie | grep Type | awk -F " " '{print $2}')
+    if [ "$flash_type" = "nand" ]; then
+    # NAND flash 
+    # onie_boot_reason ver onie_bootcmd should be update by loader self on next
+    # loader bootup
+    #
+        fw_setenv -f onie_boot_reason
+        fw_setenv -f ver
+        fw_setenv -f onie_bootcmd
+        fw_setenv -f onie_version "$image_version"
+    else
+
     # Set/clear a few U-Boot environment variables.  Some of the values
     # come from the compiled-in default environment of the update image.
     #
@@ -58,7 +111,7 @@ ver $ver
 $bootvar $bootcmd
 EOF
     ) | fw_setenv -f -s -
-
+	fi
 }
 
 install_image()
