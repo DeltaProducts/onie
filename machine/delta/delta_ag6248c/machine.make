@@ -7,6 +7,7 @@
 # UBOOT_IDENT_STRING = 1.4.0.1
 
 ONIE_ARCH ?= armv7a
+SWITCH_ASIC_VENDOR = bcm
 
 VENDOR_REV ?= 0
 
@@ -33,6 +34,7 @@ UCLIBC_VERSION = 0.9.33.2
 
 # Set the desired U-Boot version
 UBOOT_VERSION = 2012.10
+
 
 #-------------------------------------------------------------------------------
 #
