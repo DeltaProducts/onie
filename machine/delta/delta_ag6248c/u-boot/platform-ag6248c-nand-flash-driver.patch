@@ -1,0 +1,223 @@
+From f09add3cf7433af1120c34403fa360403d6b247b Mon Sep 17 00:00:00 2001
+From: Dave Hu <dave.hu@agemasystems.com>
+Date: Fri, 11 Aug 2017 11:43:05 -0400
+Subject: [PATCH] ag6248 add the sys_eeprom read and write nand flash
+
+---
+ common/cmd_sys_eeprom.c | 196 +++++++++++++-----------------------------------
+ 1 file changed, 52 insertions(+), 144 deletions(-)
+
+diff --git a/common/cmd_sys_eeprom.c b/common/cmd_sys_eeprom.c
+index cf2ed1c..479999f 100644
+--- a/common/cmd_sys_eeprom.c
++++ b/common/cmd_sys_eeprom.c
+@@ -858,160 +856,70 @@ static int set_bytes(char *buf, const char *string, int * converted_accum)
+ 	return 0;
+ }
+ 
+-#ifdef CONFIG_SYS_EEPROM_USE_COMMON_FLASH_IO
++#ifdef  CONFIG_SYS_EEPROM_USE_NAND_FLASH_IO
++    #include "nand.h"
+ 
+-/**
+- * Provide sys_eeprom read/write functions for platforms that store
+- * the information in a flash sector.
+- */
++#ifndef CONFIG_SYS_EEPROM_NAND_FLASH_ADDR
++# error CONFIG_SYS_EEPROM_NAND_FLASH_ADDR must be defined when using nand flash i/o.
++#endif
+ 
+-#ifndef CONFIG_SYS_FLASH_HWINFO_ADDR
+-# error CONFIG_SYS_FLASH_HWINFO_ADDR must be defined when using common flash i/o.
++#ifndef CONFIG_SYS_EEPROM_NAND_FLASH_SIZE
++# error CONFIG_SYS_EEPROM_NAND_FLASH_SIZE must be defined when using nand flash i/o.
+ #endif
+ 
+-#ifndef CONFIG_SYS_FLASH_HWINFO_SECT_SIZE
+-# error CONFIG_SYS_FLASH_HWINFO_SECT_SIZE must be defined when using common flash i/o.
++#ifndef CONFIG_SYS_EEPROM_NAND_FLASH_ID
++# error CONFIG_SYS_EEPROM_NAND_FLASH_ID must be defined when using nand flash i/o.
+ #endif
+ 
+-/**
+- * read_sys_eeprom - read the hwinfo from flash
+- */
+-int read_sys_eeprom(void *eeprom, int offset, int len)
+-{
+-	memcpy(eeprom, (void *)(CONFIG_SYS_FLASH_HWINFO_ADDR + offset), len);
+-	return 0;
+-}
++static u_char nand_buffer[CONFIG_SYS_EEPROM_NAND_FLASH_SIZE];
+ 
+-/**
+- * write_sys_eeprom - write the hwinfo to flash
+- */
+-int write_sys_eeprom(void *eeprom, int len)
++int read_sys_eeprom(void *eeprom, int offset, int len)
+ {
+-	int ret;
+-	int addr_start, addr_last;
+-
+-	addr_start = CONFIG_SYS_FLASH_HWINFO_ADDR;
+-	addr_last  = CONFIG_SYS_FLASH_HWINFO_ADDR +
+-		CONFIG_SYS_FLASH_HWINFO_SECT_SIZE - 1;
+-
+-	/* unprotect CONFIG_SYS_FLASH_HWINFO_ADDR */
+-	ret = flash_sect_protect(0 /* protect off */,
+-				 addr_start, addr_last);
+-	if (ret != 0) {
+-		printf("Unprotecting flash range 0x%08x - 0x%08x failed.\n",
+-		       addr_start, addr_last);
+-		flash_perror(ret);
+-		return -1;
+-	}
++  size_t      rwsize = CONFIG_SYS_EEPROM_NAND_FLASH_SIZE;
++  nand_info_t *nand;
++  int     ret;
+ 
+-	/* erase CONFIG_SYS_FLASH_HWINFO_ADDR */
+-	ret = flash_sect_erase(addr_start, addr_last);
+-	if (ret != 0) {
+-		printf("Erasing flash range 0x%08x - 0x%08x failed.\n",
+-		       addr_start, addr_last);
+-		flash_perror(ret);
+-		return -1;
+-	}
++  nand = &nand_info[CONFIG_SYS_EEPROM_NAND_FLASH_ID];
++  if (!nand)
++      return -1;
+ 
+-	/* flash write eeprom data to CONFIG_SYS_FLASH_HWINFO_ADDR */
+-	ret = flash_write(eeprom, addr_start, len);
+-	if (ret != 0) {
+-		printf("Writing %d bytes to flash addr 0x%08x failed.\n",
+-		       len, addr_start);
+-		flash_perror(ret);
+-		return -1;
+-	}
++  ret = nand_read_skip_bad(nand, CONFIG_SYS_EEPROM_NAND_FLASH_ADDR, &rwsize, (u_char *)nand_buffer);
+ 
+-	/* protect CONFIG_SYS_FLASH_HWINFO_ADDR */
+-	ret = flash_sect_protect(1 /* protect on */,
+-				 addr_start, addr_last);
+-	if (ret != 0) {
+-		printf("Protecting flash range 0x%08x - 0x%08x failed.\n",
+-		       addr_start, addr_last);
+-		flash_perror(ret);
+-		return -1;
+-	}
++  if (ret)
++      return ret;
+ 
+-	return 0;
+-}
+-
+-#endif /* CONFIG_SYS_EEPROM_USE_COMMON_FLASH_IO */
+-
+-#ifdef CONFIG_SYS_EEPROM_USE_COMMON_SPI_IO
+-
+-/**
+- *  Use common spi read/write functions
+- *
+- */
+-
+-#ifndef CONFIG_SYS_SPI_FLASH_HWINFO_ADDR
+-# error CONFIG_SYS_SPI_FLASH_HWINFO_ADDR must be defined when using common spi i/o.
+-#endif
+-#ifndef CONFIG_SYS_SPI_FLASH_HWINFO_SECT_SIZE
+-# error CONFIG_SYS_SPI_FLASH_HWINFO_SECT_SIZE must be defined when using common spi i/o.
+-#endif
+-
+-int read_sys_eeprom(void *eeprom, int offset, int len)
+-{
+-	int ret;
+-	struct spi_flash *env_flash = NULL;
+-
+-	if (!env_flash) {
+-		env_flash = spi_flash_probe(CONFIG_ENV_SPI_BUS,
+-				CONFIG_ENV_SPI_CS,
+-				CONFIG_ENV_SPI_MAX_HZ, CONFIG_ENV_SPI_MODE);
+-		if (!env_flash) {
+-			set_default_env("!spi_flash_probe() failed");
+-			return -1;
+-		}
+-	}
+-
+-	ret = spi_flash_read(env_flash, CONFIG_SYS_SPI_FLASH_HWINFO_ADDR+offset, len, eeprom);
+-	if (ret) {
+-		printf("SPI Read Fail!\n");
+-		return -1;
+-	}
+-
+-	return 0;
++  memcpy (eeprom, &nand_buffer[offset], len);
++  return 0;
+ }
+ 
+ int write_sys_eeprom(void *eeprom, int len)
+ {
+-	int ret;
+-	struct spi_flash *env_flash = NULL;
+-
+-	if (len > CONFIG_SYS_SPI_FLASH_HWINFO_SECT_SIZE) {
+-		printf("write_sys_eeprom() failed, len > HWINFO SIZE\n");
+-		return -1;
+-	}
+-
+-	if (!env_flash) {
+-		env_flash = spi_flash_probe(CONFIG_ENV_SPI_BUS,
+-				CONFIG_ENV_SPI_CS,
+-				CONFIG_ENV_SPI_MAX_HZ, CONFIG_ENV_SPI_MODE);
+-		if (!env_flash) {
+-			set_default_env("!spi_flash_probe() failed");
+-			return -1;
+-		}
+-	}
+-
+-	ret = spi_flash_erase(env_flash, CONFIG_SYS_SPI_FLASH_HWINFO_ADDR,
+-			CONFIG_SYS_SPI_FLASH_HWINFO_SECT_SIZE);
+-	if (ret) {
+-		printf("SPI Flash erase failed\n");
+-		return 1;
+-	}
+-
+-	ret = spi_flash_write(env_flash, CONFIG_SYS_SPI_FLASH_HWINFO_ADDR, len, eeprom);
+-	if (ret) {
+-		printf("SPI Flash write failed\n");
+-		return 1;
+-	}
+-
+-	return 0;
++  size_t      rwsize = CONFIG_SYS_EEPROM_NAND_FLASH_SIZE;
++  nand_info_t *nand  = &nand_info[CONFIG_SYS_EEPROM_NAND_FLASH_ID];
++  nand_erase_options_t opts;
++  int     ret;
++
++  if (!nand)
++      return -1;
++
++  memcpy (nand_buffer, eeprom, len);
++
++  /* erase first */
++  memset (&opts, 0, sizeof(opts));
++  opts.offset = CONFIG_SYS_EEPROM_NAND_FLASH_ADDR;
++  opts.length = CONFIG_SYS_EEPROM_NAND_FLASH_SIZE;
++  opts.quiet  = 1;
++  opts.spread = 1;
++  ret = nand_erase_opts(nand, &opts);
++  if (ret)
++      return ret;
++  
++  /* write */
++  ret = nand_write_skip_bad(nand, CONFIG_SYS_EEPROM_NAND_FLASH_ADDR, &rwsize, (u_char *)nand_buffer, 0);
++  return ret;
+ }
+ 
+-#endif /* CONFIG_SYS_EEPROM_USE_COMMON_SPI_IO */
++#endif /* CONFIG_SYS_EEPROM_USE_NAND_FLASH_IO */
+ 
+ #ifdef CONFIG_SYS_EEPROM_USE_COMMON_I2C_IO
+ 
+-- 
+2.1.4
+

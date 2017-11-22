@@ -1,0 +1,21 @@
+the ag6248c support 1G and 2G platform. 
+for the 1G platform,follows the steps:
+change to delta_ag7248c/uboot dir 
+... cd uboot
+... vi series 
+*** comment out the platform-ag6248c-2G-DDR3-support.patch 
+
+for the 2G platform, do the same 
+... cd uboot
+... vi series
+*** add the platform-ag6248c-2G-DDR3-support.patch
+
+
+
+
+
+
+
+
+
+
