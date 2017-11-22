@@ -1,0 +1,91 @@
+From ea6099621beea5efb3171f98e13718662be0aaa2 Mon Sep 17 00:00:00 2001
+From: Dave Hu <dave.hu@agemasystems.com>
+Date: Tue, 12 Sep 2017 10:19:43 -0400
+Subject: [PATCH] platform-ag6248c-2G-DDR3-support
+
+---
+ arch/arm/cpu/armv7/iproc/ddr_init.c       | 8 ++++----
+ board/broadcom/bcm95634x/ddr_init_table.c | 4 ++--
+ include/configs/helix4.h                  | 6 +++---
+ 3 files changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/arch/arm/cpu/armv7/iproc/ddr_init.c b/arch/arm/cpu/armv7/iproc/ddr_init.c
+index a8dd6ba..7355df6 100755
+--- a/arch/arm/cpu/armv7/iproc/ddr_init.c
++++ b/arch/arm/cpu/armv7/iproc/ddr_init.c
+@@ -996,8 +996,8 @@ void ddr_init(void)
+ #else
+ 
+ #if defined(CONFIG_HELIX4)
+-	/* mhz = 0x190, 32 bit bus, 16 bit chip width, 1.35v vddq, 8Gb chip size, jedec type = 25 (DDR3-1866M) */
+-	reg32_write((volatile uint32_t *)DDR_PHY_CONTROL_REGS_STRAP_CONTROL, 0x0190c4f3);
++	/* mhz = 0x190, 32 bit bus, 16 bit chip width, 1.35v vddq, 16Gb chip size, jedec type = 25 (DDR3-1866M) */
++	reg32_write((volatile uint32_t *)DDR_PHY_CONTROL_REGS_STRAP_CONTROL, 0x0190c4b3);
+ 	val = reg32_read((volatile uint32_t *)DDR_PHY_CONTROL_REGS_REVISION);
+ #endif
+ #if defined(CONFIG_HURRICANE2)
+@@ -4053,8 +4053,8 @@ int ddr_init2(void)
+ 		return -1;
+ 	}
+ #if (defined(CONFIG_HELIX4) || defined(CONFIG_KATANA2))
+-	/* mhz = 0x190, 32 bit bus, 16 bit chip width, 1.35v vddq, 8Gb chip size, jedec type = 25 (DDR3-1866M) */
+-	reg32_write((volatile uint32_t *)DDR_PHY_CONTROL_REGS_STRAP_CONTROL, 0x0190c4f3);
++	/* mhz = 0x190, 32 bit bus, 16 bit chip width, 1.35v vddq, 16Gb chip size, jedec type = 25 (DDR3-1866M) */
++	reg32_write((volatile uint32_t *)DDR_PHY_CONTROL_REGS_STRAP_CONTROL, 0x0190c4b3);
+ 	val = reg32_read((volatile uint32_t *)DDR_PHY_CONTROL_REGS_REVISION);
+ 
+ 	/* ECC =1, DRAM type = 1 i.e DDR3, AL = 3, write recovery = 0, write latency = 9, CAS read latency = 13 */
+diff --git a/board/broadcom/bcm95634x/ddr_init_table.c b/board/broadcom/bcm95634x/ddr_init_table.c
+index 5bf66ac..46701e5 100644
+--- a/board/broadcom/bcm95634x/ddr_init_table.c
++++ b/board/broadcom/bcm95634x/ddr_init_table.c
+@@ -1121,7 +1121,7 @@ unsigned int ddr3_init_tab_1600[] = {
+ 	75, 0x00000000,
+ 	76, 0x00000000,
+ 	77, 0x00000000,
+-	82, 0x01010001,
++	82, 0x01000001,
+ 	89, 0x00000000,
+ 	90, 0x00000000,
+ 	91, 0x00000000,
+@@ -1409,4 +1409,4 @@ unsigned int ddr_clk_tab[] = {
+ 		750,	120,	30,	8,	0, 100, 15, 24,			
+ 		800,	128,	32,	8,	0, 80,  16, 24,			
+ 		0xffffffff
+-};
+\ No newline at end of file
++};
+diff --git a/include/configs/helix4.h b/include/configs/helix4.h
+index 960a99c..7f7dc32 100644
+--- a/include/configs/helix4.h
++++ b/include/configs/helix4.h
+@@ -56,7 +56,7 @@
+ 
+ #define CONFIG_BOARD_LATE_INIT
+ #define CONFIG_BOARD_EARLY_INIT_F (1)
+-#define CONFIG_PHYS_SDRAM_1_SIZE			0x40000000 /* 1GB */
++#define CONFIG_PHYS_SDRAM_1_SIZE			0x80000000 /* 2GB */
+ #define RANGER_SVK_SDRAM_SIZE	0x20000000 /* 512MB */
+ #define IPROC_ETH_MALLOC_BASE 0xD00000
+ 
+@@ -334,7 +334,7 @@ When DEBUG is enabled, need to disable both CACHE to make u-boot running
+ #define CONFIG_PLATFORM_ENV    \
+ 	"consoledev=ttyS0\0"    \
+ 	"initrd_high=0x80000000\0" \
+-	"fpboot=setenv bootargs console=${consoledev},${baudrate} maxcpus=2 mem=1024M root=/dev/ram ${mtdparts} ubi.mtd=4 ethaddr=$ethaddr quiet\0" \
++	"fpboot=setenv bootargs console=${consoledev},${baudrate} maxcpus=2 mem=2048M root=/dev/ram ${mtdparts} ubi.mtd=4 ethaddr=$ethaddr quiet\0" \
+ 	"ubifscfg=ubi part nand0,4 0x0; ubifsmount fs\0" \
+ 	"mfg=mfg\0"  \
+ 	"onie_start=onie\0"       \
+@@ -345,7 +345,7 @@ When DEBUG is enabled, need to disable both CACHE to make u-boot running
+ \
+ 	    "mtdparts=mtdparts=nand_iproc.0:1m(uboot),2m(shmoo),1m(nenv),12m(onie),3992m(open),12m(onie2),2m(vpd),6m(sys_eeprom),16m(diags),16m(diags2),32m(diags_fs)\0"  \
+ 	    "mtdids=nand0=nand_iproc.0\0"  \
+-	"platformargs=mtdparts=nand_iproc.0:1m(uboot),2m(shmoo),1m(nenv),12m(onie),3992m(open),12m(onie2),2m(vpd),6m(sys_eeprom),16m(diags),16m(diags2),32m(diags_fs)  maxcpus=2 mem=1024M\0"
++	"platformargs=mtdparts=nand_iproc.0:1m(uboot),2m(shmoo),1m(nenv),12m(onie),3992m(open),12m(onie2),2m(vpd),6m(sys_eeprom),16m(diags),16m(diags2),32m(diags_fs)  maxcpus=2 mem=2048M\0"
+ 	
+ 
+ #define        CONFIG_EXTRA_ENV_SETTINGS       \
+-- 
+2.1.4
+

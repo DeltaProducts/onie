@@ -1,0 +1,33 @@
+# U-Boot specific uninstall routine
+
+#  Copyright (C) 2014,2015 Curt Brune <curt@cumulusnetworks.com>
+#
+#  SPDX-License-Identifier:     GPL-2.0
+
+uninstall_system()
+{
+
+    # erase open NAND flash region
+    if [ -h /dev/mtd-open ] ; then
+        printf "${log_pre}Erasing unused NAND flash region\n"
+        if [ "$onie_testing" != "y" ] ; then
+            flash_unlock /dev/mtd-open > /dev/null 2>&1
+            flash_erase  /dev/mtd-open 0 0
+        fi
+    fi
+
+    # erase u-boot env NAND flash region
+    # do this even during testing
+    if [ -h /dev/mtd-nenv ] ; then
+        printf "${log_pre}Erasing u-boot environment NAND flash region\n"
+        flash_unlock /dev/mtd-nenv > /dev/null 2>&1
+        flash_erase  /dev/mtd-nenv 0 0
+    fi
+
+    return 0
+}
+
+# Local Variables:
+# mode: shell-script
+# eval: (sh-set-shell "/bin/sh" t nil)
+# End:

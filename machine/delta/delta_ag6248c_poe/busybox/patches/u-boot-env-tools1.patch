@@ -1,0 +1,34 @@
+From 0d273cbfa8c218eb5d859a8c883f96ef15bc7110 Mon Sep 17 00:00:00 2001
+From: Dave Hu <dave.hu@agemasystems.com>
+Date: Wed, 27 Sep 2017 11:28:27 -0400
+Subject: [PATCH] u-boot-env-tools1
+
+---
+ miscutils/sys_eeprom_mtd.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/miscutils/sys_eeprom_mtd.c b/miscutils/sys_eeprom_mtd.c
+index 119d77c..772e076 100644
+--- a/miscutils/sys_eeprom_mtd.c
++++ b/miscutils/sys_eeprom_mtd.c
+@@ -30,7 +30,7 @@ int read_sys_eeprom(void *eeprom_data, int offset, int len)
+         return -1;
+     }
+ 
+-    if (mtdinfo.type != MTD_NORFLASH) {
++    if (mtdinfo.type != MTD_NORFLASH && mtdinfo.type != MTD_NANDFLASH) {
+         fprintf (stderr, "Unsupported flash type %u\n", mtdinfo.type);
+         return -1;
+     }
+@@ -85,7 +85,7 @@ int write_sys_eeprom(void *eeprom_data, int len)
+         return -1;
+     }
+ 
+-    if (mtdinfo.type != MTD_NORFLASH) {
++    if (mtdinfo.type != MTD_NORFLASH && mtdinfo.type != MTD_NANDFLASH) {
+         fprintf (stderr, "Unsupported flash type %u\n", mtdinfo.type);
+         return -1;
+     }
+-- 
+2.1.4
+
