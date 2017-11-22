@@ -1,0 +1,347 @@
+From ee01a6a962308680529a741893f78035efc23ebf Mon Sep 17 00:00:00 2001
+From: Dave Hu <dave.hu@agemasystems.com>
+Date: Thu, 17 Aug 2017 07:17:34 -0400
+Subject: [PATCH] platform ag6248c add the boot menu
+
+---
+ common/Makefile          |   1 +
+ common/cmd_menu.c        | 277 +++++++++++++++++++++++++++++++++++++++++++++++
+ common/main.c            |   3 +
+ include/configs/helix4.h |   4 +-
+ 4 files changed, 283 insertions(+), 2 deletions(-)
+ create mode 100644 common/cmd_menu.c
+
+diff --git a/common/Makefile b/common/Makefile
+index f84a19e..820d3af 100644
+--- a/common/Makefile
++++ b/common/Makefile
+@@ -26,6 +26,7 @@ include $(TOPDIR)/config.mk
+ LIB	= $(obj)libcommon.o
+ 
+ COBJS-$(CONFIG_CMD_SYS_EEPROM) += cmd_sys_eeprom.o
++COBJS-$(CONFIG_CMD_MENU) += cmd_menu.o
+ 
+ # core
+ ifndef CONFIG_SPL_BUILD
+diff --git a/common/cmd_menu.c b/common/cmd_menu.c
+new file mode 100644
+index 0000000..0accc45
+--- /dev/null
++++ b/common/cmd_menu.c
+@@ -0,0 +1,277 @@
++#include <common.h>
++#include <command.h>
++
++
++#define MENU_ITEM_LEN 		6
++#define MENU_POS_X		24
++#define MENU_POS_Y		4
++#define MENU_BORDER_COLUMN_MAX	50
++#define MENU_BORDER_ROW_MAX	10
++#define MENU_BORDER_START_X	4
++#define MENU_BORDER_START_Y     6
++
++struct menu
++{
++	int coord_x;
++	int coord_y;
++	char* menu_name;
++	char* cmd_buff;	
++};
++
++struct coord
++{
++	int X;
++	int Y;
++
++};
++/*the boot menu item*/
++struct menu boot_menu[MENU_ITEM_LEN]={
++	{5,7,"ONIE: Install OS","run onie_bootcmd"}, \
++	{5,8,"ONIE: Rescue","run onie_rescue"}, \
++	{5,9,"ONIE: Uninstall OS","run onie_uninstall"}, \
++	{5,10,"ONIE: Update ONIE","run onie_update"}, \
++	{5,11,"DIAG: Ag6248c","run mfgdiags"}, \
++	{5,12,"Uboot Command",NULL}
++
++};
++
++/*wait for the keyboard to input one char */
++static char await_for_key_input(unsigned int delay, int* error_p)
++ {
++     int i;
++     if(delay == -1){
++         while(1){
++             if(tstc())
++                  return getc();
++         }
++     }
++    else{
++         for(i=0;i<delay;i++){
++             if(tstc())
++                  return getc();
++             udelay(10*1000);
++          }
++
++    }
++    if(error_p)
++        *error_p =-1;
++    return 0;
++}
++
++/*move the curse the (x,y) position*/
++void set_curse_postion(int pos_x,int pos_y)
++{	
++	int x,y;
++	x=pos_x;
++	y=pos_y;
++	printf("\033[%d;%dH",y,x);  
++	return ;
++}
++
++/*clear the full screen*/
++void clear_screen( void )  
++{ 
++	printf("\033[2J\033[1;1H\n");  
++	return ;
++}
++
++/*display the menu item content*/
++void show_menu_item(int n)
++{
++
++	int i;
++	struct coord pos;
++	i=n;
++	pos.X=boot_menu[i].coord_x;
++	pos.Y=boot_menu[i].coord_y;
++	set_curse_postion(pos.X,pos.Y);
++	printf("\033[40;37m%s\033[0m",boot_menu[i].menu_name);
++	return ;
++
++}
++
++/*display the selected item white*/
++void show_menu_item_white(int n)
++{
++	
++	int i;
++	struct coord pos;
++	i=n;
++	pos.X=boot_menu[i].coord_x;
++	pos.Y=boot_menu[i].coord_y;
++	set_curse_postion(pos.X,pos.Y);
++	printf("\033[47;30m%s\033[0m",boot_menu[i].menu_name);
++	return ;
++}
++
++/*display the menu border*/
++void show_menu_border(void)
++{
++	int i;
++	struct coord pos;
++	/*show up border line*/
++	pos.X=MENU_BORDER_START_X;
++	pos.Y=MENU_BORDER_START_Y;
++	set_curse_postion(pos.X,pos.Y);
++	printf("\033[40;37m--------------------------------------------------\033[0m");
++	/*show down border line*/
++	pos.X=MENU_BORDER_START_X;
++	pos.Y=MENU_BORDER_START_Y+MENU_BORDER_ROW_MAX+1;
++	set_curse_postion(pos.X,pos.Y);
++	printf("\033[40;37m--------------------------------------------------\033[0m");
++	/*show left border line*/
++	for(i=1;i<=MENU_BORDER_ROW_MAX;i++){
++		pos.X=MENU_BORDER_START_X-1;
++		pos.Y=MENU_BORDER_START_Y+i;
++		set_curse_postion(pos.X,pos.Y);
++		printf("\033[40;37m|\033[0m");		
++	}
++	/*show rigth border line*/
++	for(i=1;i<=MENU_BORDER_ROW_MAX;i++){
++		pos.X=MENU_BORDER_START_X+MENU_BORDER_COLUMN_MAX;
++		pos.Y=MENU_BORDER_START_Y+i;
++		set_curse_postion(pos.X,pos.Y);
++		printf("\033[40;37m|\033[0m");
++	}
++	return ;
++
++}
++
++void show_menu(void)
++{
++	int i; 
++	struct coord pos;
++	/*display the mian menu line*/
++	pos.X=MENU_POS_X;
++	pos.Y=MENU_POS_Y;
++	set_curse_postion(pos.X,pos.Y);
++	printf("\033[40;37mThe Uboot Menu\033[0m");
++
++	/*display the menu border*/
++	show_menu_border();
++
++	/*display the menu items*/
++	for(i=0;i<MENU_ITEM_LEN;i++){
++		show_menu_item(i);
++	}
++	return ;
++
++
++}
++
++void run_cmd(int offset)
++{
++
++	char cmd_buff[50];
++	clear_screen();
++	strcpy(cmd_buff, boot_menu[offset].cmd_buff);
++	run_command(cmd_buff, 0);
++	return ;
++}
++
++static int which_char(char chr)
++{
++	char ch;
++	ch=chr;
++	if(ch==0x0d)
++		return 0;
++	else if(ch==0x1b){
++		ch=await_for_key_input(-1,NULL);
++		if(ch==0x5b){
++			ch=await_for_key_input(-1,NULL);
++			/*up*/
++			if(ch==0x41)
++				return 1;
++			/*down*/
++			else if(ch==0x42)
++				return 2;
++			else
++				return -1;
++		}
++		else
++			return -1;
++	}
++	else
++		return -1;
++
++
++
++
++}
++
++static int select_menu_items(void)
++{
++	struct coord cur_pos;
++	char ch;
++	int done;
++	int pos_offset=0;
++	cur_pos.X=boot_menu[0].coord_x;
++	cur_pos.Y=boot_menu[0].coord_y;
++	set_curse_postion(cur_pos.X,cur_pos.Y);
++	show_menu_item_white(0);
++	while(1){
++		ch=await_for_key_input(-1,NULL);
++		 /*untag the unselected item*/
++		show_menu_item(pos_offset);
++		done=which_char(ch);
++		if(done==0)
++			break;
++		else if(done==1)
++			cur_pos.Y--;
++		else if(done==2)
++			cur_pos.Y++;
++		else
++			continue;
++		/*renew the curse position*/
++		if(cur_pos.Y>boot_menu[MENU_ITEM_LEN-1].coord_y)
++			cur_pos.Y=boot_menu[0].coord_y;
++		if(cur_pos.Y<boot_menu[0].coord_y)
++			cur_pos.Y=boot_menu[MENU_ITEM_LEN-1].coord_y;
++		/*compute the curse offset*/
++		pos_offset=cur_pos.Y-boot_menu[0].coord_y;
++		/*move the curse */
++		set_curse_postion(cur_pos.X,cur_pos.Y);
++		/*tag the selected item*/
++		show_menu_item_white(pos_offset);
++	}
++	/*run the selected item command*/
++	if(!boot_menu[pos_offset].cmd_buff){
++		clear_screen();
++		return 0;
++	}
++	else
++		run_cmd(pos_offset);
++	return 0;
++
++}
++
++static int cmd_menu_shell(void)
++{
++	clear_screen();
++	show_menu();
++	select_menu_items();
++	return 0;
++
++}
++
++int do_menu(cmd_tbl_t* cmd_p, int flag, int argc, char* argv[])
++{
++    cmd_menu_shell();
++    return 0;
++
++}
++
++/*bulid the menu uboot commmand*/
++U_BOOT_CMD(
++    menu,   3,  0,  do_menu,
++    "menu - display a boot menu, to select the items\n",
++    "input the number or char to select the items to run the different command\n"
++);
++
++
++
++
++
++
++
++
+diff --git a/common/main.c b/common/main.c
+index 1cd5cb7..850faca 100644
+--- a/common/main.c
++++ b/common/main.c
+@@ -408,6 +408,9 @@ void main_loop (void)
+ 	 * Main Loop for Monitor Command Processing
+ 	 */
+ #ifdef CONFIG_SYS_HUSH_PARSER
++#ifdef CONFIG_CMD_MENU
++     run_command("menu",0);
++#endif
+ 	parse_file_outer();
+ 	/* This point is never reached */
+ 	for (;;);
+diff --git a/include/configs/helix4.h b/include/configs/helix4.h
+index 0da082a..d039055 100644
+--- a/include/configs/helix4.h
++++ b/include/configs/helix4.h
+@@ -14,7 +14,7 @@
+ /* ONIE common config */
+ #define ONIE_IMAGE_READ_CMD  \
+ 	"nand read  $loadaddr $onie_start 0x00c00000"
+-
++#define CONFIG_CMD_MENU
+ #define CONFIG_CMD_LOADB
+ #define CONFIG_YAFFS2
+ 
+@@ -321,7 +321,7 @@ When DEBUG is enabled, need to disable both CACHE to make u-boot running
+ ** infrastructure.
+ **
+ */
+-
++#define CONFIG_CMD_MENU
+ #define CONFIG_CMD_SYS_EEPROM
+ #define CONFIG_SYS_EEPROM_MAX_SIZE	0x100000 /* 1 block size */
+ 
+-- 
+2.1.4
+

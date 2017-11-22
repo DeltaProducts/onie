@@ -1,0 +1,5296 @@
+Add support agema ag6248c
+
+
+diff --git a/Makefile b/Makefile
+index 4017993..38bf9cc 100755
+--- a/Makefile
++++ b/Makefile
+@@ -316,7 +316,6 @@ LIBS-y += lib/libfdt/libfdt.o
+ LIBS-y += api/libapi.o
+ LIBS-y += post/libpost.o
+ LIBS-y += test/libtest.o
+-LIBS-y += drivers/d1w/libds1wm.o
+ 
+ ifneq ($(CONFIG_AM33XX)$(CONFIG_OMAP34XX)$(CONFIG_OMAP44XX)$(CONFIG_OMAP54XX),)
+ LIBS-y += $(CPUDIR)/omap-common/libomap-common.o
+@@ -574,6 +574,7 @@ $(obj)u-boot-iproc.bin: nand_spl $(obj)u-boot.bin $(obj)spl/u-boot-spl.bin
+ 			$(obj)spl/u-boot-spl.bin $(obj)spl/u-boot-spl-pad.bin
+ 		cat $(obj)nand_spl/u-boot-nand_spl.bin $(obj)spl/u-boot-spl-pad.bin > $(obj)spl/u-boot-iproc-spl.bin
+ 		cat $(obj)spl/u-boot-iproc-spl.bin $(obj)u-boot.img > $@
++		cp $@ $(obj)u-boot.bin
+    
+ endif
+ endif
+diff --git a/arch/arm/cpu/armv7/iproc/benchscreen.c b/arch/arm/cpu/armv7/iproc/benchscreen.c
+index 3349837..2faac77 100755
+--- a/arch/arm/cpu/armv7/iproc/benchscreen.c
++++ b/arch/arm/cpu/armv7/iproc/benchscreen.c
+@@ -14,27 +14,22 @@
+ */
+ #if (defined(CONFIG_HELIX4) || defined(CONFIG_HURRICANE2))
+ void bench_screen_test1(void)
+-{ 
++{
+ 	uint32_t val, i;
+-	printf("BENCH SCREENING TEST1\n");
+-	printf("=========================================\n");
+-	val = reg32_read(IPROC_WRAP_IPROC_XGPLL_CTRL_3);
++    val = reg32_read(IPROC_WRAP_IPROC_XGPLL_CTRL_3);
++#if HELIX4_BENCHSCREEN_DEBUG
+ 	printf("IPROC_XGPLL_CTRL_3: 0x%08x\n", val);
+-	reg32_clear_bits(IPROC_WRAP_IPROC_XGPLL_CTRL_3, 1 << 17);
++#endif
++    reg32_clear_bits(IPROC_WRAP_IPROC_XGPLL_CTRL_3, 1 << 17);
+ 	reg32_write_masked(IPROC_WRAP_IPROC_XGPLL_CTRL_3, 7 << 14, 4 << 14);
+ 	reg32_set_bits(IPROC_WRAP_IPROC_XGPLL_CTRL_3, 1<<17);
+ 	for(i =0; i < 1000; i++)
+ 		val = reg32_read(IPROC_WRAP_IPROC_XGPLL_STATUS);
++#if HELIX4_BENCHSCREEN_DEBUG
+ 	printf("IPROC_XGPLL_STATUS: 0x%08x\n", val);
+-	val = ((val >> 4) & 0xFF); /* bits 11:4 */
+-	printf("DCO code: %d\n", val);
+-#if 0
+-	if(val > 14)
+-		printf("PASS\n");
+-	else
+-		printf("FAIL\n");
+ #endif
+-	printf("=========================================\n");
++    val = ((val >> 4) & 0xFF); /* bits 11:4 */
++    printf("DCO:   %d (%s)\n", val, val > 14 ? "PASS" : "FAIL");
+ }
+ #endif
+ 
+diff --git a/arch/arm/cpu/armv7/iproc/ddr_init.c b/arch/arm/cpu/armv7/iproc/ddr_init.c
+index fc06121..a8dd6ba 100755
+--- a/arch/arm/cpu/armv7/iproc/ddr_init.c
++++ b/arch/arm/cpu/armv7/iproc/ddr_init.c
+@@ -36,6 +36,7 @@ extern unsigned int ddr_clk_tab[];
+ extern unsigned int ddr_phy_ctl_ovrd_tab[];
+ extern unsigned int ddr_phy_wl0_tab[];
+ 
++/* #define IPROC_DDR_INIT2_DEBUG */
+ 
+ #if defined(CONFIG_IPROC_DDR_ECC) && !defined(CONFIG_IPROC_P7)
+ void iproc_ddr_ovrd_ecc_lane(void)
+@@ -331,8 +332,10 @@ int cygnus_phy_powerup(void)
+ 	}
+ 	else
+ 	{
++#if defined(IPROC_DDR_INIT2_DEBUG)
+ 		printf("DeepSleep wakeup: ddr phy init bypassed 1\n");
+-	}
++#endif
++    }
+ #endif
+ 
+     /* Step 3: DFI normal mode */
+@@ -362,8 +365,10 @@ int cygnus_phy_powerup(void)
+ 	}
+ 	else
+ 	{
++#if defined(IPROC_DDR_INIT2_DEBUG)
+ 		printf("DeepSleep wakeup: ddr phy init bypassed 2\n");
+-	}
++#endif
++    }
+ #endif
+ 
+     while((reg32_read((volatile uint32_t *)DDR_S1_IDM_IO_STATUS) & 0x08) != 0x08) {
+@@ -1325,7 +1330,9 @@ poll_ddr_ctrl:
+ #if defined(CONFIG_NORTHSTAR)
+ 	while(!(reg32_read((volatile uint32_t *)DDR_DENALI_CTL_89) & 0x200));
+ #else
+-	while(!(reg32_read((volatile uint32_t *)DDR_DENALI_CTL_89) & 0x100));
++#if !defined(CONFIG_AS4610_54_RECOVERY)
++    while(!(reg32_read((volatile uint32_t *)DDR_DENALI_CTL_89) & 0x100));
++#endif
+ #endif
+ 	if(otp_status && (sku_id == 0)) {
+ 		reg32_write((volatile uint32_t *)DDR_PHY_WORD_LANE_0_READ_DATA_DLY, 0x03);
+@@ -1622,7 +1629,1623 @@ DDR_PHY_ECC_LANE_DRIVE_PAD_CTL_BASE,
+ DDR_PHY_ECC_LANE_WR_PREAMBLE_MODE_BASE,
+ };
+ #endif
+-#if defined(CONFIG_IPROC_NAND) && defined(CONFIG_ENV_IS_IN_NAND) && CONFIG_ENV_IS_IN_NAND
++#if defined(CONFIG_AS4610_54_RECOVERY)
++static const uint32_t as4610_54_shmoo_default[] = {
++0x4F4D4853,
++0x0000DC14,
++0x00000BB9,
++0x92436034,
++0x000000C6,
++0x18010830,
++0x00000000,
++0x18010834,
++0x00010028,
++0x1801086C,
++0x000007DF,
++0x18010A00,
++0x0001001A,
++0x18010A04,
++0x00010000,
++0x18010A08,
++0x0001001A,
++0x18010A0C,
++0x0001001A,
++0x18010A10,
++0x00010018,
++0x18010A14,
++0x00010018,
++0x18010A18,
++0x00010018,
++0x18010A1C,
++0x00010018,
++0x18010A20,
++0x00010018,
++0x18010A24,
++0x00010018,
++0x18010A28,
++0x00010018,
++0x18010A2C,
++0x00010018,
++0x18010A30,
++0x00000000,
++0x18010A34,
++0x00010003,
++0x18010A38,
++0x00010003,
++0x18010A3C,
++0x00010003,
++0x18010A40,
++0x00010003,
++0x18010A44,
++0x00010003,
++0x18010A48,
++0x00010003,
++0x18010A4C,
++0x00010003,
++0x18010A50,
++0x00010003,
++0x18010A54,
++0x00010003,
++0x18010A58,
++0x00010003,
++0x18010A5C,
++0x00010003,
++0x18010A60,
++0x00010003,
++0x18010A64,
++0x00010003,
++0x18010A68,
++0x00010003,
++0x18010A6C,
++0x00010003,
++0x18010A70,
++0x00010003,
++0x18010A74,
++0x00010019,
++0x18010AA4,
++0x00010000,
++0x18010AA8,
++0x0001001A,
++0x18010AAC,
++0x0001001A,
++0x18010AB0,
++0x00010019,
++0x18010AB4,
++0x00010019,
++0x18010AB8,
++0x00010019,
++0x18010ABC,
++0x00010019,
++0x18010AC0,
++0x00010019,
++0x18010AC4,
++0x00010019,
++0x18010AC8,
++0x00010019,
++0x18010ACC,
++0x00010019,
++0x18010AD0,
++0x00000000,
++0x18010AD4,
++0x00010002,
++0x18010AD8,
++0x00010002,
++0x18010ADC,
++0x00010002,
++0x18010AE0,
++0x00010002,
++0x18010AE4,
++0x00010002,
++0x18010AE8,
++0x00010002,
++0x18010AEC,
++0x00010002,
++0x18010AF0,
++0x00010002,
++0x18010AF4,
++0x00010002,
++0x18010AF8,
++0x00010002,
++0x18010AFC,
++0x00010002,
++0x18010B00,
++0x00010002,
++0x18010B04,
++0x00010002,
++0x18010B08,
++0x00010002,
++0x18010B0C,
++0x00010002,
++0x18010B10,
++0x00010002,
++0x18010B14,
++0x0001001C,
++0x18010B18,
++0x00000000,
++0x18010B1C,
++0x00000000,
++0x18010B20,
++0x00000000,
++0x18010B24,
++0x00000000,
++0x18010B28,
++0x00000000,
++0x18010B2C,
++0x00000000,
++0x18010B30,
++0x00000000,
++0x18010B34,
++0x00000000,
++0x18010B38,
++0x00000000,
++0x18010B3C,
++0x00000000,
++0x18010B40,
++0x00000000,
++0x18010B44,
++0x00000000,
++0x18010B48,
++0x00000000,
++0x18010B4C,
++0x00000000,
++0x18010B50,
++0x00000000,
++0x18010B54,
++0x00000000,
++0x18010B58,
++0x00000000,
++0x18010B5C,
++0x00000000,
++0x18010B60,
++0x00000004,
++0x18010B64,
++0x00000007,
++0x18010B68,
++0x00000000,
++0x18010B6C,
++0x00000000,
++0x18010BA0,
++0x00500000,
++0x18010BA4,
++0x0000000A,
++0x18010BA8,
++0x00000000,
++0x18010BAC,
++0x00000003,
++0x18010BB0,
++0x00000000,
++0x18010C00,
++0x00010028,
++0x18010C04,
++0x00010000,
++0x18010C08,
++0x0001001F,
++0x18010C0C,
++0x0001001F,
++0x18010C10,
++0x0001001D,
++0x18010C14,
++0x0001001D,
++0x18010C18,
++0x0001001D,
++0x18010C1C,
++0x0001001D,
++0x18010C20,
++0x0001001D,
++0x18010C24,
++0x0001001D,
++0x18010C28,
++0x0001001D,
++0x18010C2C,
++0x0001001D,
++0x18010C30,
++0x00000000,
++0x18010C34,
++0x0001000F,
++0x18010C38,
++0x0001000F,
++0x18010C3C,
++0x0001000F,
++0x18010C40,
++0x0001000F,
++0x18010C44,
++0x0001000F,
++0x18010C48,
++0x0001000F,
++0x18010C4C,
++0x0001000F,
++0x18010C50,
++0x0001000F,
++0x18010C54,
++0x0001000F,
++0x18010C58,
++0x0001000F,
++0x18010C5C,
++0x0001000F,
++0x18010C60,
++0x0001000F,
++0x18010C64,
++0x0001000F,
++0x18010C68,
++0x0001000F,
++0x18010C6C,
++0x0001000F,
++0x18010C70,
++0x0001000F,
++0x18010C74,
++0x00010027,
++0x18010CA4,
++0x00010000,
++0x18010CA8,
++0x00010019,
++0x18010CAC,
++0x00010019,
++0x18010CB0,
++0x00010018,
++0x18010CB4,
++0x00010018,
++0x18010CB8,
++0x00010018,
++0x18010CBC,
++0x00010018,
++0x18010CC0,
++0x00010018,
++0x18010CC4,
++0x00010018,
++0x18010CC8,
++0x00010018,
++0x18010CCC,
++0x00010018,
++0x18010CD0,
++0x00000000,
++0x18010CD4,
++0x00010000,
++0x18010CD8,
++0x00010000,
++0x18010CDC,
++0x00010000,
++0x18010CE0,
++0x00010000,
++0x18010CE4,
++0x00010000,
++0x18010CE8,
++0x00010000,
++0x18010CEC,
++0x00010000,
++0x18010CF0,
++0x00010000,
++0x18010CF4,
++0x00010000,
++0x18010CF8,
++0x00010000,
++0x18010CFC,
++0x00010000,
++0x18010D00,
++0x00010000,
++0x18010D04,
++0x00010000,
++0x18010D08,
++0x00010000,
++0x18010D0C,
++0x00010000,
++0x18010D10,
++0x00010000,
++0x18010D14,
++0x00010029,
++0x18010D18,
++0x00000000,
++0x18010D1C,
++0x00000000,
++0x18010D20,
++0x00000000,
++0x18010D24,
++0x00000000,
++0x18010D28,
++0x00000000,
++0x18010D2C,
++0x00000000,
++0x18010D30,
++0x00000000,
++0x18010D34,
++0x00000000,
++0x18010D38,
++0x00000000,
++0x18010D3C,
++0x00000000,
++0x18010D40,
++0x00000000,
++0x18010D44,
++0x00000000,
++0x18010D48,
++0x00000000,
++0x18010D4C,
++0x00000000,
++0x18010D50,
++0x00000000,
++0x18010D54,
++0x00000000,
++0x18010D58,
++0x00000000,
++0x18010D5C,
++0x00000000,
++0x18010D60,
++0x00000004,
++0x18010D64,
++0x00000007,
++0x18010D68,
++0x00000000,
++0x18010D6C,
++0x00000000,
++0x18010DA0,
++0x00500000,
++0x18010DA4,
++0x0000000A,
++0x18010DA8,
++0x00000000,
++0x18010DAC,
++0x00000003,
++0x18010DB0,
++0x00000000,
++0x18010E00,
++0x0001002D,
++0x18010E04,
++0x00010000,
++0x18010E08,
++0x0001001A,
++0x18010E0C,
++0x0001001A,
++0x18010E10,
++0x00010016,
++0x18010E14,
++0x00010016,
++0x18010E18,
++0x00010016,
++0x18010E1C,
++0x00010016,
++0x18010E20,
++0x00000000,
++0x18010E34,
++0x00010000,
++0x18010E38,
++0x00010000,
++0x18010E3C,
++0x00010000,
++0x18010E40,
++0x00010000,
++0x18010E44,
++0x00010000,
++0x18010E48,
++0x00010000,
++0x18010E4C,
++0x00010000,
++0x18010E50,
++0x00010000,
++0x18010E74,
++0x0001002D,
++0x18010F60,
++0x00000004,
++0x18010F64,
++0x00000007,
++0x18010FA0,
++0x00500000,
++0x18010FA4,
++0x0000000A,
++0x18010FAC,
++0x00000003,
++0x00000A09,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0x00000000,
++0xEA00001A,
++0xE59FF018,
++0xE59FF018,
++0xE59FF018,
++0xE59FF018,
++0xE59FF018,
++0xE59FF018,
++0xE59FF018,
++0x55AA55AA,
++0xDFF4C240,
++0xDFF4C2A0,
++0xDFF4C300,
++0xDFF4C360,
++0xDFF4C3C0,
++0xDFF4C420,
++0xDFF4C460,
++0x12345678,
++0xDEADBEEF,
++0xDEADBEEF,
++0xDEADBEEF,
++0x1B006000,
++0x00061128,
++0x00061128,
++0x000A2250,
++0x00063FF8,
++0xDFF46F64,
++0xDFF45F64,
++0xDFF46F70,
++0xEB00005E,
++0xE10F0000,
++0xE3C0001F,
++0xE38000D3,
++0xE129F000,
++0xEE110F10,
++0xE3C00A02,
++0xEE010F10,
++0xE59F0408,
++0xEE0C0F10,
++0xEB000055,
++0xEB000062,
++0xE59FD3FC,
++0xE3CDD007,
++0xE3A00000,
++0xEB003AC6,
++0xE1A04000,
++0xE1A05001,
++0xE1A06002,
++0xE1A0D004,
++0xE24F00C8,
++0xE1500006,
++0x03A09000,
++0x0A000026,
++0xE1A01006,
++0xE51F3084,
++0xE0802003,
++0xE8B00600,
++0xE8A10600,
++0xE1500002,
++0x3AFFFFFB,
++0xE51F00A4,
++0xE0469000,
++0xE59FA06C,
++0xE08AA000,
++0xE59F205C,
++0xE0822000,
++0xE59F3058,
++0xE0833000,
++0xE5920000,
++0xE0800009,
++0xE5921004,
++0xE20170FF,
++0xE3570017,
++0x0A000007,
++0xE3570002,
++0x0A000000,
++0xEA000006,
++0xE1A01221,
++0xE08A1001,
++0xE5911004,
++0xE0811009,
++0xEA000001,
++0xE5901000,
++0xE0811009,
++0xE5801000,
++0xE2822008,
++0xE1520003,
++0x3AFFFFEB,
++0xEA000002,
++0x00061128,
++0x000634C8,
++0x000634C8,
++0xE51F0120,
++0xE51F111C,
++0xE1A04006,
++0xE0800004,
++0xE0811004,
++0xE3A02000,
++0xE1500001,
++0x2A00000A,
++0xE5802000,
++0xE2800004,
++0xEAFFFFFA,
++0xE1A00006,
++0xE3A01000,
++0xE3A02040,
++0xE0822006,
++0xE8B00180,
++0xE8A10180,
++0xE1500002,
++0x3AFFFFFB,
++0xEE070F15,
++0xEE070F9A,
++0xEE070F95,
++0xE59F02D4,
++0xE0800009,
++0xEE0C0F10,
++0xE59F0014,
++0xE24F1F77,
++0xE080E001,
++0xE08EE009,
++0xE1A00005,
++0xE1A01006,
++0xE1A0F00E,
++0x0000EABC,
++0xE12FFF1E,
++0xE3A00000,
++0xEE080F17,
++0xEE070F15,
++0xEE070FD5,
++0xEE070F9A,
++0xEE070F95,
++0xEE110F10,
++0xE3C00A02,
++0xE3C00007,
++0xE3800002,
++0xE3800B02,
++0xE3800A01,
++0xEE010F10,
++0xE1A0F00E,
++0xEA0000A6,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE51FD1DC,
++0xE58DE000,
++0xE14FE000,
++0xE58DE004,
++0xE3A0D013,
++0xE169F00D,
++0xE1A0E00F,
++0xE1B0F00E,
++0xE24DD048,
++0xE88D1FFF,
++0xE51F2204,
++0xE892000C,
++0xE28D0048,
++0xE28D5034,
++0xE1A0100E,
++0xE885000F,
++0xE1A0000D,
++0xEB003C21,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE24DD004,
++0xE58D0000,
++0xE51F0244,
++0xE580E000,
++0xE14F0000,
++0xE580E004,
++0xE59D0000,
++0xE28DD004,
++0xE24DD048,
++0xE88D1FFF,
++0xE51F2264,
++0xE892000C,
++0xE28D0048,
++0xE28D5034,
++0xE1A0100E,
++0xE885000F,
++0xE1A0000D,
++0xEB003C13,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE51FD29C,
++0xE58DE000,
++0xE14FE000,
++0xE58DE004,
++0xE3A0D013,
++0xE169F00D,
++0xE1A0E00F,
++0xE1B0F00E,
++0xE24DD048,
++0xE88D1FFF,
++0xE51F22C4,
++0xE892000C,
++0xE28D0048,
++0xE28D5034,
++0xE1A0100E,
++0xE885000F,
++0xE1A0000D,
++0xEB003C05,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE51FD2FC,
++0xE58DE000,
++0xE14FE000,
++0xE58DE004,
++0xE3A0D013,
++0xE169F00D,
++0xE1A0E00F,
++0xE1B0F00E,
++0xE24DD048,
++0xE88D1FFF,
++0xE51F2324,
++0xE892000C,
++0xE28D0048,
++0xE28D5034,
++0xE1A0100E,
++0xE885000F,
++0xE1A0000D,
++0xEB003BF7,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE51FD35C,
++0xE58DE000,
++0xE14FE000,
++0xE58DE004,
++0xE3A0D013,
++0xE169F00D,
++0xE1A0E00F,
++0xE1B0F00E,
++0xE24DD048,
++0xE88D1FFF,
++0xE51F2384,
++0xE892000C,
++0xE28D0048,
++0xE28D5034,
++0xE1A0100E,
++0xE885000F,
++0xE1A0000D,
++0xEB003BE9,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE51FD3C4,
++0xE24DD048,
++0xE88D1FFF,
++0xE28D803C,
++0xE9486000,
++0xE588E000,
++0xE14F6000,
++0xE5886004,
++0xE5880008,
++0xE1A0000D,
++0xEB0006DC,
++0xE8DD7FFF,
++0xE1A00000,
++0xE59DE03C,
++0xE28DD048,
++0xE25EF004,
++0xE51FD400,
++0xE24DD048,
++0xE88D1FFF,
++0xE28D803C,
++0xE9486000,
++0xE588E000,
++0xE14F6000,
++0xE5886004,
++0xE5880008,
++0xE1A0000D,
++0xEB003BD2,
++0xE8DD7FFF,
++0xE1A00000,
++0xE59DE03C,
++0xE28DD048,
++0xE25EF004,
++0xDFF4C000,
++0x1B003FF0,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0xE320F000,
++0x18010320,
++0x18010400,
++0x180108B8,
++0xEE100FB0,
++0xE200000F,
++0xE3500000,
++0x0A000329,
++0xE320F002,
++0xEA00035E,
++0xE59F1D78,
++0xE3A02000,
++0xE5812000,
++0xE59F1D70,
++0xE5812000,
++0xE59F1D6C,
++0xE5912000,
++0xE59F3D68,
++0xE0022003,
++0xE3822619,
++0xE5812000,
++0xE59F9D5C,
++0xE3A01000,
++0xE3A03A19,
++0xE1530001,
++0x0A000005,
++0xE2433001,
++0xE3A02000,
++0xE5992000,
++0xE1520001,
++0x1A000000,
++0xEAFFFFF7,
++0xE59F1D34,
++0xE59F2D34,
++0xE5812000,
++0xE5993000,
++0xE59F1D2C,
++0xE59F2D2C,
++0xE5812000,
++0xE5993000,
++0xE59F1D24,
++0xE3A02010,
++0xE5812000,
++0xE5993000,
++0xE59F4D18,
++0xE3A01001,
++0xE3A03B05,
++0xE1530001,
++0x0A000006,
++0xE2433001,
++0xE3A02000,
++0xE5942000,
++0xE2022001,
++0xE1520001,
++0x0A000000,
++0xEAFFFFF6,
++0xE59F1CEC,
++0xE3A02002,
++0xE5812000,
++0xE5993000,
++0xE59F1CE0,
++0xE5913000,
++0xE3A02001,
++0xE0023003,
++0xE3832002,
++0xE59F1CD0,
++0xE5812000,
++0xE5993000,
++0xE59F1CC8,
++0xE3A02601,
++0xE5812000,
++0xE5993000,
++0xE59F1CBC,
++0xE59F2CBC,
++0xE5812000,
++0xE5993000,
++0xE59F4CB4,
++0xE3A01001,
++0xE3A03B05,
++0xE1530001,
++0x0A000006,
++0xE2433001,
++0xE3A02000,
++0xE5942000,
++0xE2022001,
++0xE1520001,
++0x0A000000,
++0xEAFFFFF6,
++0xE59F4C84,
++0xE3A01002,
++0xE5942000,
++0xE2022002,
++0xE1520001,
++0x0A000063,
++0xE59F1C70,
++0xE59F2C70,
++0xE5812000,
++0xE5993000,
++0xE59F1C68,
++0xE59F2C68,
++0xE5812000,
++0xE5993000,
++0xE59F1C60,
++0xE59F2C58,
++0xE5812000,
++0xE5993000,
++0xE59F1C54,
++0xE59F2C48,
++0xE5812000,
++0xE5993000,
++0xE59F1C48,
++0xE59F2C38,
++0xE5812000,
++0xE5993000,
++0xE59F1C3C,
++0xE59F2C28,
++0xE5812000,
++0xE5993000,
++0xE59F1C30,
++0xE59F2C18,
++0xE5812000,
++0xE5993000,
++0xE59F1C24,
++0xE59F2C08,
++0xE5812000,
++0xE5993000,
++0xE59F1C18,
++0xE59F2BF8,
++0xE5812000,
++0xE5993000,
++0xE59F1C0C,
++0xE59F2BE8,
++0xE5812000,
++0xE5993000,
++0xE59F1C00,
++0xE59F2BD8,
++0xE5812000,
++0xE5993000,
++0xE59F1BF4,
++0xE59F2BC8,
++0xE5812000,
++0xE5993000,
++0xE59F1BE8,
++0xE59F2BB8,
++0xE5812000,
++0xE5993000,
++0xE59F1BDC,
++0xE59F2BA8,
++0xE5812000,
++0xE5993000,
++0xE59F1BD0,
++0xE59F2B98,
++0xE5812000,
++0xE5993000,
++0xE59F1BC4,
++0xE59F2B88,
++0xE5812000,
++0xE5993000,
++0xE59F1BB8,
++0xE59F2B78,
++0xE5812000,
++0xE5993000,
++0xE59F1BAC,
++0xE59F2B68,
++0xE5812000,
++0xE5993000,
++0xE59F1BA0,
++0xE59F2B58,
++0xE5812000,
++0xE5993000,
++0xE59F1B94,
++0xE59F2B48,
++0xE5812000,
++0xE5993000,
++0xE59F1B88,
++0xE59F2B38,
++0xE5812000,
++0xE5993000,
++0xE59F1B7C,
++0xE59F2B28,
++0xE5812000,
++0xE5993000,
++0xE59F1B70,
++0xE59F2B18,
++0xE5812000,
++0xE5993000,
++0xE59F1B64,
++0xE59F2B08,
++0xE5812000,
++0xE5993000,
++0xE59F1B58,
++0xE59F2AF8,
++0xE5812000,
++0xE5993000,
++0xE59F1B4C,
++0xE3A02000,
++0xE5812000,
++0xE59F1B44,
++0xE3A020A0,
++0xE5812000,
++0xE59F1B3C,
++0xE3A02E19,
++0xE5812000,
++0xE59F1B34,
++0xE59F2B34,
++0xE5812000,
++0xE59F1B30,
++0xE59F2B30,
++0xE5812000,
++0xE59F1B2C,
++0xE59F2B2C,
++0xE5812000,
++0xE59F1B28,
++0xE59F2B28,
++0xE5812000,
++0xE59F1B24,
++0xE59F2B24,
++0xE5812000,
++0xE59F1B20,
++0xE59F2B20,
++0xE5812000,
++0xE59F1B1C,
++0xE59F2B1C,
++0xE5812000,
++0xE59F1B18,
++0xE59F2B08,
++0xE5812000,
++0xE59F1B10,
++0xE59F2B10,
++0xE5812000,
++0xE59F1B0C,
++0xE3A02001,
++0xE5812000,
++0xE59F1B04,
++0xE59F2B04,
++0xE5812000,
++0xE59F1B00,
++0xE59F2B00,
++0xE5812000,
++0xE59F1AFC,
++0xE59F2AFC,
++0xE5812000,
++0xE59F1AF8,
++0xE59F2AF8,
++0xE5812000,
++0xE59F1AF4,
++0xE3A02000,
++0xE5812000,
++0xE59F1AEC,
++0xE59F2AEC,
++0xE5812000,
++0xE59F1AE8,
++0xE59F2AE8,
++0xE5812000,
++0xE59F1AE4,
++0xE59F2AE4,
++0xE5812000,
++0xE59F1AE0,
++0xE3A02C05
++};
++
++static int write_shmoo_to_flash(uint32_t *buf, int length)
++{
++    /* Dump data to UART for capture */
++    while (length--) {
++        printf("0x%08X,\n",*buf++);
++    }
++    return 0;
++}
++#elif defined(CONFIG_IPROC_NAND) && defined(CONFIG_ENV_IS_IN_NAND) && CONFIG_ENV_IS_IN_NAND
+ 
+ static int write_shmoo_to_flash(void *buf, int length)
+ {
+@@ -1705,11 +3328,19 @@ static int write_shmoo_to_flash(void *buf, int length)
+     
+     /* Erase if necessary */
+     if (erase) {
++#if defined(CONFIG_SHMOO_REUSE_QSPI_SIZE)
++        ret = spi_flash_erase(
++                flash, 
++                offset / CONFIG_SHMOO_REUSE_QSPI_SIZE * CONFIG_SHMOO_REUSE_QSPI_SIZE,
++                CONFIG_SHMOO_REUSE_QSPI_SIZE
++                );
++#else
+         ret = spi_flash_erase(
+                 flash, 
+                 offset / flash->sector_size * flash->sector_size, 
+                 flash->sector_size
+                 );
++#endif
+         if (ret) {
+             printf("SPI flash erase failed, error=%d\n", ret);
+             spi_flash_free(flash);
+@@ -1814,10 +3445,15 @@ static volatile uint32_t *validate_flash_shmoo_values(struct shmoo_signature *ps
+     flptr = (volatile uint32_t *)(IPROC_NOR_MEM_BASE + CONFIG_SHMOO_REUSE_NOR_OFFSET);
+     offset = 0;
+ #else
++#if defined(CONFIG_AS4610_54_RECOVERY)
++    flptr = (volatile uint32_t *)as4610_54_shmoo_default;
++    offset = 0;
++#else
+     /* Read SHMOO data from SPI */
+     flptr = (volatile uint32_t *)(IPROC_QSPI_MEM_BASE + CONFIG_SHMOO_REUSE_QSPI_OFFSET);
+     offset = 0;
+ #endif
++#endif
+ 
+     /* Get chip type and DDR type/clock */
+     dev_id = (reg32_read((volatile uint32_t *)ChipcommonA_ChipID)) & 0x0000ffff;
+@@ -1885,7 +3521,7 @@ static int try_restore_shmoo(void)
+     int pairs, i;
+     
+     /* Validate values in flash */
+-    printf("Validate Shmoo parameters stored in flash ..... ");
++    printf("       Validate DDR shmoo parameters stored in flash ..... ");
+     flptr = validate_flash_shmoo_values(&sig, &pairs);
+     if (flptr == NULL) {
+         printf("failed\n");
+@@ -1897,14 +3533,14 @@ static int try_restore_shmoo(void)
+     if (CONFIG_SHMOO_REUSE_DELAY_MSECS > 0) {
+         char c = 0;
+         unsigned long start;
+-        printf("Press Ctrl-C to run Shmoo ..... ");
++        printf("       Press Ctrl-C to run DDR shmoo ..... ");
+         start = get_timer(0);
+         while(get_timer(start) <= CONFIG_SHMOO_REUSE_DELAY_MSECS) {
+             if (tstc()) {
+                 c = getc();
+                 if (c == 0x03) {
+                     printf("Pressed.\n");
+-                    printf("Do you want to run the Shmoo? [y/N] ");
++                    printf("Do you want to run DDR shmoo? [y/N] ");
+                     for(;;) {
+                         c = getc();
+                         if (c == 'y' || c == 'Y') {
+@@ -1932,7 +3568,7 @@ static int try_restore_shmoo(void)
+     }
+     
+     /* Restore values from flash */
+-    printf("Restoring Shmoo parameters from flash ..... ");
++    printf("       Restoring DDR shmoo parameters from flash ..... ");
+     flptr += 5;
+     for(i=0; i<pairs; i++) {
+         reg = (uint32_t *)(*flptr++);
+@@ -1956,7 +3592,7 @@ static int try_restore_shmoo(void)
+     
+     /* Perform memory test to see if the parameters work */
+     if (CONFIG_SHMOO_REUSE_MEMTEST_LENGTH > 0 ) {
+-        printf("Running simple memory test ..... ");
++        printf("       Running simple memory test ..... ");
+         i = simple_memory_test(
+             (void *)CONFIG_SHMOO_REUSE_MEMTEST_START,
+             CONFIG_SHMOO_REUSE_MEMTEST_LENGTH);
+@@ -2010,8 +3646,11 @@ void iproc_save_shmoo_values(void)
+         printf("Error allocating memory for saving Shmoo values!\n");
+         return;
+     }
++#if defined(CONFIG_AS4610_54_RECOVERY)
++    printf("%s: length=%d, address=0x%08X\n", __func__, length, buffer);
++#endif
+     ptr = buffer;
+-    
++
+     /* Fill signature */
+     shmoo_sig2mem(&sig,ptr);
+     ptr += 5;
+@@ -2134,8 +3773,10 @@ static int clear_ddr(uint32_t offset, uint32_t size)
+ 	if((get_timer(start) <= 10000)  &&
+ 	   (!reg32_read((volatile uint32_t *)DDR_BistErrorOccurred)))
+ 	{
++#if defined(IPROC_DDR_INIT2_DEBUG)
+ 		printf("clear_ddr: OK\n");
+-		return(0);
++#endif
++        return(0);
+ 	}
+ 	printf("clear_ddr: Failed: 0x%lx\n", get_timer(start));
+ 	if(reg32_read((volatile uint32_t *)DDR_BistErrorOccurred))
+@@ -2179,7 +3820,7 @@ static int simple_ddr_crc32_check(void)
+ }
+ #endif
+ 
+-void ddr_init2(void)
++int ddr_init2(void)
+ {
+ 	int i;
+ 	volatile unsigned int val;
+@@ -2228,7 +3869,15 @@ void ddr_init2(void)
+ 		dev_id = 56450; /* KATANA2 */
+ 	}
+ 
+-	printf("DEV ID = 0x%x\n", dev_id);
++    printf("Device:");
++    switch (dev_id) {
++        case 0xdc14:
++            printf("Helix4 (0x%x)\n", dev_id);
++            break;
++        default:
++            printf("Unknown (0x%x)\n", dev_id);
++            break;
++    }
+ #if (defined(CONFIG_NS_PLUS))
+ 	uint32_t otp_status = 0;
+ 	/* get device id from OTP */
+@@ -2254,7 +3903,15 @@ void ddr_init2(void)
+ 
+ #endif /* (defined(CONFIG_NS_PLUS)) */
+ 
+-	printf("SKU ID = 0x%x\n", sku_id);
++    printf("SKU:   ");
++    switch (sku_id) {
++        case 0xb340:
++            printf("BCM56340 (0x%x)\n", sku_id);
++            break;
++        default:
++            printf("Unknown (0x%x)\n", sku_id);
++            break;
++    }
+ 
+ #if defined(CONFIG_IPROC_P7)
+ 	val = reg32_read((volatile uint32_t *)DDR_S1_IDM_IO_STATUS) & 0x3;
+@@ -2264,23 +3921,23 @@ void ddr_init2(void)
+ 		ddr_type = 2;
+ 	} else {
+ 		printf("Unsupported DDR type: %d\n", val);
+-		return;
++		return -1;
+ 	}
+     printf("DDR type: DDR%d\n", (ddr_type == 1)? 3 : 4);
+ #elif defined(CONFIG_CYGNUS)
+     ddr_type = 1;
+ #else
+ 	ddr_type = reg32_read((volatile uint32_t *)DDR_S1_IDM_IO_STATUS) & 0x1; 
+-	printf("DDR type: DDR%d\n", (ddr_type) ? 3 : 2);
+ #endif /* defined(CONFIG_IPROC_P7) */
+     
+ 	ddr_clk = get_ddr_clock(sku_id, ddr_type);
+-	printf("MEMC 0 DDR speed = %dMHz\n", ddr_clk);
++    printf("DRAM:  ");
++    printf("DDR%d, %dMHz\n", (ddr_type) ? 3 : 2, ddr_clk);
+ 
+ 	status = change_ddr_clock(ddr_clk);
+ 	if(status) {
+ 		printf("CRU LCPLL configuratioin failed\n");
+-		return;
++		return -1;
+ 	}
+ 
+ #if defined(CONFIG_IPROC_P7)
+@@ -2327,7 +3984,7 @@ void ddr_init2(void)
+ 	}
+ 	if(i == 0x19000) {
+ 		printf("DDR PHY not power up\n");
+-		return;
++		return -1;
+ 	}
+ #endif
+ #endif /* defined(CONFIG_IPROC_P7) */
+@@ -2368,7 +4025,7 @@ void ddr_init2(void)
+ 
+ 	if(i == 0x19000) {
+ 		printf("DDR PLL not locked\n");
+-		return;
++		return -1;
+ 	}
+ 
+ 	/* Get the DDR S0 out of reset */
+@@ -2384,14 +4041,16 @@ void ddr_init2(void)
+ 	for(i=0; i < 0x19000; i++) {
+ 		val = reg32_read((volatile uint32_t *)DDR_PHY_CONTROL_REGS_REVISION);
+ 		if( val != 0) {
++#if defined(IPROC_DDR_INIT2_DEBUG)
+             printf("PHY revision version: 0x%08x\n", val);
+-			break; /* DDR PHY is up */
++#endif
++            break; /* DDR PHY is up */
+         }
+ 	}
+ 	
+ 	if(i == 0x19000) {
+ 		printf("DDR PHY is not up\n");
+-		return;
++		return -1;
+ 	}
+ #if (defined(CONFIG_HELIX4) || defined(CONFIG_KATANA2))
+ 	/* mhz = 0x190, 32 bit bus, 16 bit chip width, 1.35v vddq, 8Gb chip size, jedec type = 25 (DDR3-1866M) */
+@@ -2432,8 +4091,10 @@ void ddr_init2(void)
+ #endif /* (defined(CONFIG_NS_PLUS)) */
+ 
+ #if (defined(CONFIG_HELIX4) || defined(CONFIG_KATANA2))
+-	printf("ddr_init2: Calling soc_ddr40_set_shmoo_dram_config\n");
+-	soc_ddr40_set_shmoo_dram_config(unit, ((uint32) 0xFFFFFFFF) >> (32 - 2));
++#if defined(IPROC_DDR_INIT2_DEBUG)
++    printf("ddr_init2: Calling soc_ddr40_set_shmoo_dram_config\n");
++#endif
++    soc_ddr40_set_shmoo_dram_config(unit, ((uint32) 0xFFFFFFFF) >> (32 - 2));
+ #elif (defined(CONFIG_HURRICANE2))
+ 	printf("ddr_init2: Calling soc_ddr40_set_shmoo_dram_config\n");
+ 	soc_ddr40_set_shmoo_dram_config(unit, ((uint32) 0xFFFFFFFF) >> (32 - 1));
+@@ -2473,8 +4134,10 @@ void ddr_init2(void)
+ 	}
+ 	else
+ 	{
++#if defined(IPROC_DDR_INIT2_DEBUG)
+ 		printf("DeepSleep wakeup: ddr init bypassed 1\n");
+-	}
++#endif
++    }
+ #elif defined(CONFIG_GREYHOUND)
+ 	printf("ddr_init2: Calling soc_and28_shmoo_dram_info_set\n");
+ 	sdi.data_rate_mbps = (ddr_clk == 667) ? 1333 : (ddr_clk * 2);
+@@ -2555,7 +4218,7 @@ void ddr_init2(void)
+   }
+   if (i == 4000) {
+ 		printf("VDL calibration timeout!\n");
+-		return;
++		return -1;
+ 	}
+ 	reg32_write((volatile uint32_t *)DDR_PHY_CONTROL_REGS_VDL_CALIBRATE, 0x00000000);
+ 	/* CKE adjustment */
+@@ -2613,13 +4276,17 @@ void ddr_init2(void)
+   }
+   
+ #elif !(defined(CONFIG_CYGNUS) || defined(CONFIG_GREYHOUND))
++#if defined(IPROC_DDR_INIT2_DEBUG)
+ 	printf("ddr_init2: Calling soc_ddr40_phy_calibrate\n");
+-	if(soc_ddr40_phy_calibrate(unit, 0, DDR_PHYTYPE_ENG, 0) != SOC_E_NONE) {
++#endif
++    if(soc_ddr40_phy_calibrate(unit, 0, DDR_PHYTYPE_ENG, 0) != SOC_E_NONE) {
+ 
+ 		printf("DDR phy calibration failed\n");
+-		return;
++        return -1;
+ 	} else {
++#if defined(IPROC_DDR_INIT2_DEBUG)
+ 		printf("DDR phy calibration passed\n");
++#endif
+     }
+ #else
+ 	if(!skip_shmoo)
+@@ -2628,13 +4295,15 @@ void ddr_init2(void)
+ 		if(soc_and28_shmoo_phy_init(unit, 0) != SOC_E_NONE) {
+ 
+ 			printf("DDR PHY initialization failed\n");
+-			return;
++			return -1;
+ 		}
+ 	}
+ 	else
+ 	{
++#if defined(IPROC_DDR_INIT2_DEBUG)
+ 		printf("DeepSleep wakeup: ddr init bypassed 2\n");
+-	}
++#endif
++    }
+ #endif /* !(defined(CONFIG_CYGNUS) || defined(CONFIG_GREYHOUND)) */
+ 
+ #if defined(CONFIG_SABER2)
+@@ -2647,10 +4316,11 @@ void ddr_init2(void)
+ #endif
+ 
+ #if !(defined(CONFIG_SABER2) && defined(CONFIG_IPROC_EMULATION))
+-	printf("Programming controller register\n");
++#if defined(IPROC_DDR_INIT2_DEBUG)
++    printf("Programming controller register\n");
++#endif
+ 	ddr_init_regs(ddr_init_tab);
+ #endif
+-
+     ddr_type = 1;
+ 	if(ddr_type) {
+ 		/* DDR3 */	
+@@ -2728,8 +4398,12 @@ void ddr_init2(void)
+   {  /* this statement is to reduce compile error */
+   }
+ #else
+-	while(!(reg32_read((volatile uint32_t *)DDR_DENALI_CTL_89) & 0x100));
++#if !defined(CONFIG_AS4610_54_RECOVERY)
++  while(!(reg32_read((volatile uint32_t *)DDR_DENALI_CTL_89) & 0x100));
++#endif
++#if defined(IPROC_DDR_INIT2_DEBUG)
+ 	printf("ddr_init2: MemC initialization complete\n");
++#endif
+ 	
+ 	/* Srini - Write to DDR controller registers */
+ 	reg32_write((unsigned int *)0x18010354, 0x00FFFFFF);
+@@ -2742,7 +4416,9 @@ void ddr_init2(void)
+ 	if (try_restore_shmoo()) 
+   #endif /* CONFIG_SHMOO_REUSE */
+ 	{
++#if defined(IPROC_DDR_INIT2_DEBUG)
+ 		printf("ddr_init2: Calling soc_ddr40_shmoo_ctl\n");
++#endif
+ 		soc_ddr40_shmoo_ctl(unit, 0, 2, 2, 0, 1);
+ 	}
+ #endif  /* defined(CONFIG_SABER2) */
+@@ -2798,8 +4474,10 @@ void ddr_init2(void)
+ #endif /* !(defined(CONFIG_CYGNUS) || defined(CONFIG_GREYHOUND)) */
+ 	else
+ 	{
++#if defined(IPROC_DDR_INIT2_DEBUG)
+ 		printf("DeepSleep wakeup: ddr init bypassed 3\n");
+-	}
++#endif
++    }
+ 
+ #if defined(CONFIG_IPROC_P7) && defined(CONFIG_IPROC_DDR_ECC)
+ 	printf("Enabling DDR ECC correcting and reporting\n");
+@@ -2819,21 +4497,21 @@ void ddr_init2(void)
+ 	/* Initialize DDR so that uninitialized reads won't report ecc error */
+ 	clear_ddr(0, CONFIG_PHYS_SDRAM_1_SIZE);
+ #elif defined(CONFIG_IPROC_DDR_ECC)
+-	printf("Enabling DDR ECC reporting\n");
++	printf("       Enabling DDR ECC reporting\n");
+ 	/* Clear DDR interrupts if any */
+ 	*(unsigned int *)(DDR_DENALI_CTL_213) = 0x00FFFFFF;
+ 	__udelay(1000);
+ 	reg32_set_bits((volatile uint32_t *)DDR_DENALI_CTL_67, 0x01); //Disable auto correction
+ 	reg32_set_bits((volatile uint32_t *)DDR_DENALI_CTL_66, 0x01); //Enable ECC
+     
+-	clear_ddr(0, CONFIG_PHYS_SDRAM_1_SIZE);
+-	printf("Enabling DDR ECC correction\n");
++	clear_ddr(0, CONFIG_PHYS_SDRAM_2_SIZE);
++	printf("       Enabling DDR ECC correction\n");
+ 	reg32_set_bits((volatile uint32_t *)DDR_DENALI_CTL_66, 1 << 1); //Enable ECC correction
+ #endif /* defined(CONFIG_IPROC_P7) && defined(CONFIG_IPROC_DDR_ECC) */
+ 
+ 	/* Release DDR slave port to AXI */
+ 	reg32_clear_bits((volatile uint32_t *)DDR_BistConfig, 1 << DDR_BistConfig__axi_port_sel);
+-	printf("DDR Interface Ready\n");
++	printf("       DDR Interface Ready\n");
+ 
+ 	//dump_phy_regs();
+ 
+@@ -2862,7 +4540,7 @@ void ddr_init2(void)
+ //	iproc_dump_ddr_regs();
+ 
+ 	if(pwrctli0==0)
+-		return;
++		return -1;
+ 	
+ wakeup:
+ 	printf("Wakeup from %s\n", pwrctli0==2 ? "SLEEP":"DEEPSLEEP");
+@@ -2885,7 +4563,7 @@ wakeup:
+ 		"mov	lr, #0\n"
+ 		"mov	pc, r5\n");
+ #endif /* defined(CONFIG_CYGNUS) */
+-
++    return 0;
+ }
+ 
+ #endif /*!(defined(CONFIG_NORTHSTAR)) */
+diff --git a/arch/arm/cpu/armv7/iproc/iproc_nand.c b/arch/arm/cpu/armv7/iproc/iproc_nand.c
+index dc14845..a9aefb0 100755
+--- a/arch/arm/cpu/armv7/iproc/iproc_nand.c
++++ b/arch/arm/cpu/armv7/iproc/iproc_nand.c
+@@ -382,12 +382,11 @@ static int iproc_nand_config (
+     uint32_t full_addr;
+ 	int i;
+ 
+-	/* 
+-	 * Do not remove the printf below
+-	 * It is needed because timers are not yet configured 
++	/*
++	 * Do not remove the delay below
+ 	 */
+-    printf(" ");
+-	if (cs >= CHIPSELECT_MAX_COUNT)
++    __udelay(500);
++    if (cs >= CHIPSELECT_MAX_COUNT)
+ 		return NAND_CONFIG_PARAM;
+ 
+     if (inand && (inand[cs].initialized == IPROC_INIT_MAGIC))
+@@ -405,9 +404,13 @@ static int iproc_nand_config (
+     }
+ 
+     /* read device ID */
++#ifdef NAND_INFO
+     printf("NAND_FLASH_DEVICE_ID_ADDR = %X\n", IPROC_R_NAND_FLASH_DEVICE_ID_ADDR);
++#endif
+ 	reg_data = readl(IPROC_R_NAND_FLASH_DEVICE_ID_ADDR);
++#ifdef NAND_INFO
+     printf("Done that\n");
++#endif
+ 	if (!reg_data) {
+         printf("NAND AutoConfig Fail!\n");
+         return NAND_AUTOCONFIG_FAIL;
+@@ -600,8 +603,10 @@ static int iproc_nand_config (
+         iproc_nand_strap_page_sizes[strap_page] != inand[cs].page_size) {
+         
+         /* Strap options are invalid */
++#ifdef NAND_INFO
+         printf("\n*ERROR* Invalid strap options for this NAND: page=%d type=%d\n",
+             strap_page, strap_type);
++#endif
+             
+         /* Trying to fit with available strap options */
+         if (inand[cs].spare_area_bytes >= 27) {
+@@ -615,7 +620,9 @@ static int iproc_nand_config (
+             strap_type = 2;
+         }
+         
++#ifdef NAND_INFO
+         printf("Overriding invalid strap options: strap_type=%d\n", strap_type);
++#endif
+     }
+ 
+ 	/* Calculate the REG_ACC_CONTROL */
+@@ -651,7 +658,7 @@ static int iproc_nand_config (
+ 
+     inand[cs].initialized = IPROC_INIT_MAGIC;
+ 
+-	printf("%u KiB blocks, %u KiB pages, %uB OOB, %u-bit\n", 
++	printf("NAND:  %u KiB blocks, %u KiB pages, %uB OOB, %u-bit\n", 
+ 		inand[cs].block_size/1024, 
+ 		inand[cs].page_size/1024, inand[cs].spare_area_bytes, 
+ 	    inand[cs].device_width);
+@@ -737,7 +744,7 @@ static int iproc_nand_config (
+ 
+     }
+ 
+-	printf("NAND:   chipsize ");  /* will be filled in by u-boot */
++	printf("NAND:  chipsize ");  /* will be filled in by u-boot */
+ 
+     return NAND_STATUS_OK;
+ }
+diff --git a/arch/arm/cpu/armv7/iproc/shmoo2/shmoo_ddr40.c b/arch/arm/cpu/armv7/iproc/shmoo2/shmoo_ddr40.c
+index 10fb9c7..efc440f 100755
+--- a/arch/arm/cpu/armv7/iproc/shmoo2/shmoo_ddr40.c
++++ b/arch/arm/cpu/armv7/iproc/shmoo2/shmoo_ddr40.c
+@@ -752,8 +752,9 @@ _soc_ddr40_phy_PVT_ctl(int unit, int ci, uint32 phyType, int stat)
+                         }
+                     //}
+ 
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+                     printf("VDL calibration result: 0x%0x (cal_steps = %d)\n", rval, DDR40_GET_FIELD(rval,  DDR40_PHY_CONTROL_REGS, VDL_CALIB_STATUS, CALIB_TOTAL) >> 4);
+-
++#endif
+                     /* clear VDL calib control */
+                     SOC_IF_ERROR_RETURN(WRITE_DDR40_PHY_CONTROL_REGS_VDL_CALIBRATEr(unit,ciC,0));
+ 
+@@ -851,7 +852,9 @@ soc_ddr40_phy_calibrate(int unit, int ci, uint32 phyType, int stat)
+                 break;
+             case DDR_PHYTYPE_ENG:
+             /*    _soc_ddr40_arad_phy_init_mem_set_wrapper(unit, &ENGfgmss, freq_loc, grade_loc); */
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+                 printf("C01. Check Power Up Reset_Bar\n");
++#endif
+                 for (ciC = 0; ciC < MAX_SHMOO_INTERFACES; ciC+=2) { /* Only Even CIs */
+                     if(!_check_dram_either(ciC)) {
+                         continue;
+@@ -859,7 +862,9 @@ soc_ddr40_phy_calibrate(int unit, int ci, uint32 phyType, int stat)
+                     soc_timeout_init(&to, to_val, 0);
+                 }
+                 
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+                 printf("C02. Config and Release PLL from reset\n");
++#endif
+                 for (ciC = 0; ciC < MAX_SHMOO_INTERFACES; ciC+=2) { /* Only Even CIs */
+                     if(!_check_dram_either(ciC)) {
+                         continue;
+@@ -883,7 +888,9 @@ soc_ddr40_phy_calibrate(int unit, int ci, uint32 phyType, int stat)
+                     SOC_IF_ERROR_RETURN(WRITE_DDR40_PHY_CONTROL_REGS_PLL_CONFIGr(unit,ciC,rval));
+                 }
+                 
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+                 printf("C03. Poll PLL Lock\n");
++#endif
+                 for (ciC = 0; ciC < MAX_SHMOO_INTERFACES; ciC+=2) { /* Only Even CIs */
+                     if(!_check_dram_either(ciC)) {
+                         continue;
+@@ -901,7 +908,9 @@ soc_ddr40_phy_calibrate(int unit, int ci, uint32 phyType, int stat)
+                     } while (TRUE);
+                 }
+                 
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+                 printf("C04. Calibrate ZQ (ddr40_phy_calib_zq)\n");
++#endif
+                 for (ciC = 0; ciC < MAX_SHMOO_INTERFACES; ciC+=2) { /* Only Even CIs */
+                     if(!_check_dram_either(ciC)) {
+                         continue;
+@@ -931,8 +940,10 @@ soc_ddr40_phy_calibrate(int unit, int ci, uint32 phyType, int stat)
+                     } while (TRUE);
+                 }
+                 
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+                 printf(
+                     "C05. DDR PHY VTT On (Virtual VTT setup) DISABLE all Virtual VTT\n");
++#endif
+                 for (ciC = 0; ciC < MAX_SHMOO_INTERFACES; ciC+=2) { /* Only Even CIs */
+                     if(!_check_dram_either(ciC)) {
+                         continue;
+@@ -945,7 +956,9 @@ soc_ddr40_phy_calibrate(int unit, int ci, uint32 phyType, int stat)
+ 
+                 }
+ 
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+                 printf("C06. DDR40_PHY_DDR3_MISC\n");
++#endif
+                 for (ciC = 0; ciC < MAX_SHMOO_INTERFACES; ciC+=2) { /* Only Even CIs */
+                     if(!_check_dram_either(ciC)) {
+                         continue;
+@@ -975,7 +988,9 @@ soc_ddr40_phy_calibrate(int unit, int ci, uint32 phyType, int stat)
+                 if (!SAL_BOOT_QUICKTURN) {
+                   uint32 rd_en_byte_mode=0, rd_en_byte_vdl_steps=0, rd_en_bit_vdl_offset=0;
+ 
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+                     printf("C07. VDL Calibration\n");
++#endif
+                     for (ciC = 0; ciC < MAX_SHMOO_INTERFACES; ciC+=2) { /* Only Even CIs */
+                         if(!_check_dram_either(ciC)) {
+                             continue;
+@@ -995,44 +1010,63 @@ soc_ddr40_phy_calibrate(int unit, int ci, uint32 phyType, int stat)
+                         }
+                         soc_timeout_init(&to, to_val, 0);
+                         do {
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+ 							printf("C07.1\n");
++#endif
+                             SOC_IF_ERROR_RETURN(READ_DDR40_PHY_CONTROL_REGS_VDL_CALIB_STATUSr(unit,ciC,&rval));
+                             if (DDR40_GET_FIELD(rval,  DDR40_PHY_CONTROL_REGS, VDL_CALIB_STATUS, CALIB_IDLE)) {
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+ 								printf("C07.2\n");
++#endif
+                                 break;
+                             }
+-															printf("C07.3\n");
+-                            if (soc_timeout_check(&to)) {
++#if defined(IPROC_DDR_SHMOO_DEBUG)
++						printf("C07.3\n");
++#endif
++                        if (soc_timeout_check(&to)) {
+                                 soc_cm_debug(DK_ERR, "CI%d: Timed out waiting for VDL Calibration Idle\n", ciC);
+                                 return SOC_E_TIMEOUT;
+                             }
+                         } while (TRUE);
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+ 						printf("C07.4\n");
++#endif
+                         SOC_IF_ERROR_RETURN(READ_DDR40_PHY_CONTROL_REGS_VDL_CALIB_STATUSr(unit,ciC,&rval));
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+ 						printf("C07.4.1\n");
++#endif
+                         //if (soc_property_get(unit, spn_DIAG_EMULATOR_PARTIAL_INIT, 0x0) == 0) {
+                             if (0 == DDR40_GET_FIELD(rval,  DDR40_PHY_CONTROL_REGS, VDL_CALIB_STATUS, CALIB_LOCK)) {
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+ 								printf("C07.4.2\n");
++#endif
+                                 soc_cm_debug(DK_ERR, "CI%d: VDL Calibration Did Not Lock reg=%x \n", ciC, rval);
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+ 								printf("C07.4.3\n");
++#endif
+                                 return SOC_E_FAIL;
+                             } 
+                         //}
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+ 							printf("C07.4.4\n");
+-
++#endif
+                         //printf("VDL calibration result: 0x%0x (cal_steps = %d)\n", \
+                          //          rval, DDR40_GET_FIELD(rval,  DDR40_PHY_CONTROL_REGS, VDL_CALIB_STATUS, CALIB_TOTAL) >> 4));
+ 						//while(1); // Srini
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+                         printf("VDL calibration result: 0x%0x (cal_steps = %d)\n", rval, DDR40_GET_FIELD(rval,  DDR40_PHY_CONTROL_REGS, VDL_CALIB_STATUS, CALIB_TOTAL) >> 4);
+ 
+ 						printf("C07.4.5\n");
+-
++#endif
+                         /* clear VDL calib control */
+                         SOC_IF_ERROR_RETURN(WRITE_DDR40_PHY_CONTROL_REGS_VDL_CALIBRATEr(unit,ciC,0));
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+ 						printf("C07.4.6\n");
+-
++#endif
+                     }
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+ 					printf("C07.5\n");
++#endif
+                     for (ciC = 0; ciC < MAX_SHMOO_INTERFACES; ciC+=2) { /* Only Even CIs */
+                         if(!_check_dram_either(ciC)) {
+                             continue;
+@@ -1076,11 +1110,15 @@ soc_ddr40_phy_calibrate(int unit, int ci, uint32 phyType, int stat)
+                         //}
+                     }
+                 } else {
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+                     printf("C07. VDL Calibration SKIPPED\n");
++#endif
+                 }/* Not QUICKTURN */
+ 
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+                 printf(
+                     "C08. DDR40_PHY_DDR3_MISC : Start DDR40_PHY_RDLY_ODT....\n");
++#endif
+                 for (ciC = 0; ciC < MAX_SHMOO_INTERFACES; ciC+=2) { /* Only Even CIs */
+                     if(!_check_dram_either(ciC)) {
+                         continue;
+@@ -1115,7 +1153,9 @@ soc_ddr40_phy_calibrate(int unit, int ci, uint32 phyType, int stat)
+ #endif
+                 }
+ 
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+                 printf("C09. Start ddr40_phy_autoidle_on (MEM_SYS_PARAM_PHY_AUTO_IDLE) ....\n");
++#endif
+                 for (ciC = 0; ciC < MAX_SHMOO_INTERFACES; ciC+=2) { /* Only Even CIs */
+                     if(!_check_dram_either(ciC)) {
+                         continue;
+@@ -1130,7 +1170,9 @@ soc_ddr40_phy_calibrate(int unit, int ci, uint32 phyType, int stat)
+ #endif
+                 }
+ 
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+                 printf("C10. Wait for Phy Ready...");
++#endif
+ #if 0
+                 for (ciC = 0; ciC < MAX_SHMOO_INTERFACES; ciC+=2) { /* Only Even CIs */
+                     if(!_check_dram_either(ciC)) {
+@@ -1150,7 +1192,9 @@ soc_ddr40_phy_calibrate(int unit, int ci, uint32 phyType, int stat)
+                 }
+ #endif
+ 				sal_usleep(50000); /* 50 ms */
++#if defined(IPROC_DDR_SHMOO_DEBUG)
+                 printf("Done.\n");
++#endif
+                 break;
+             case DDR_PHYTYPE_CE:
+                 break;
+diff --git a/arch/arm/cpu/armv7/iproc/timer.c b/arch/arm/cpu/armv7/iproc/timer.c
+index 555bcbf..47ac975 100755
+--- a/arch/arm/cpu/armv7/iproc/timer.c
++++ b/arch/arm/cpu/armv7/iproc/timer.c
+@@ -95,13 +95,14 @@ void iproc_clk_enum(void)
+ #else
+ 	iproc_clk.arm_periph_clk = iproc_clk.arm_clk / 2;
+ #endif
+-	if(iproc_clk.apb_clk < 1000000 || iproc_clk.arm_periph_clk < 1000000) {
+-		printf("arm_clk=%dHz, axi_clk=%dHz, apb_clk=%dHz, arm_periph_clk=%dHz\n", 
++    printf("CLOCKS:");
++    if(iproc_clk.apb_clk < 1000000 || iproc_clk.arm_periph_clk < 1000000) {
++        printf("ARM Core=%dHz, AXI=%dHz, APB=%dHz, Peripheral=%dHz\n",
+ 		iproc_clk.arm_clk, iproc_clk.axi_clk, 
+ 		iproc_clk.apb_clk, iproc_clk.arm_periph_clk);
+ 	}
+ 	else {
+-		printf("arm_clk=%dMHz, axi_clk=%dMHz, apb_clk=%dMHz, arm_periph_clk=%dMHz\n", 
++        printf("ARM Core=%dHz, AXI=%dHz, APB=%dHz, Peripheral=%dHz\n",
+ 		iproc_clk.arm_clk/1000000, iproc_clk.axi_clk/1000000, 
+ 		iproc_clk.apb_clk/1000000, iproc_clk.arm_periph_clk/1000000);
+ 	}
+diff --git a/arch/arm/include/asm/iproc/iproc_common.h b/arch/arm/include/asm/iproc/iproc_common.h
+index 78e85b7..fefca71 100755
+--- a/arch/arm/include/asm/iproc/iproc_common.h
++++ b/arch/arm/include/asm/iproc/iproc_common.h
+@@ -56,7 +56,7 @@ extern uint32_t iproc_get_axi_clk(uint32_t refclk);
+ extern void iproc_clk_enum(void);
+ extern uint32_t iproc_read_ecc_syndrome(void);
+ extern void iproc_clear_ecc_syndrome(void);
+-extern void ddr_init2(void);
++extern int ddr_init2(void);
+ extern int is_shmoo_data_valid(void);
+ extern void save_shmoo_to_flash(void);
+ 
+diff --git a/arch/arm/lib/board.c b/arch/arm/lib/board.c
+index 33e7098..747d9bf 100755
+--- a/arch/arm/lib/board.c
++++ b/arch/arm/lib/board.c
+@@ -963,6 +963,9 @@ void board_init_r(gd_t *id, ulong dest_addr)
+ #endif
+ #endif
+
++#ifdef CONFIG_ENV_WRITE_DEFAULT_IF_CRC_BAD
++    env_write_default_if_crc_bad();
++#endif
+ 
+ #if defined(CONFIG_PRAM) || defined(CONFIG_LOGBUFFER)
+ 	/*
+diff --t a/board/broadcom/bcm95634x/bcm95634x.c b/board/broadcom/bcm95634x/bcm95634x.c
+index a1d3cc9..b658585 100755
+--- a/board/broadcom/bcm95634x/bcm95634x.c
++++ b/board/broadcom/bcm95634x/bcm95634x.c
+@@ -10,12 +10,16 @@
+ #include "asm/iproc/reg_utils.h"
+ #include "asm/iproc/iproc_common.h"
+ 
++#include "iproc_i2c.h"
++
+ DECLARE_GLOBAL_DATA_PTR;
+ 
+ extern int bcmiproc_eth_register(u8 dev_num);
+ extern void iproc_save_shmoo_values(void);
+ extern void bcmiproc_serdes_init_early(void);
+ 
++extern char env_in_flash;
++
+ /* Returns core voltage in milli volts mV */
+ /* Applicable only to core voltage ADC on Helix4 SVK */
+ int get_core_voltage_adc(uint32_t *coreV) {
+@@ -208,6 +212,97 @@ int misc_init_r (void)
+     return(0);
+ }
+ 
++#define  RETRY_COUNT         3
++/* Refer to SMB211 VOUT_COMMAND */
++int read_vrm(uchar *voltageReq, int retryCount ) {
++  int i = 0;
++  while (i < retryCount) {
++    *voltageReq = 0x0;
++    if (i2c_read((0x40>>1), 0x21, 1, voltageReq, 1) == 0) {
++      break;
++    }
++    udelay(500); /* Wait for 0.5 msec */
++    i++;/* retry */
++  }
++  return i;
++}
++
++/* Refer to SMB211 VOUT_COMMAND */
++int write_vrm(uchar *voltageReq, int retryCount ) {
++  int i = 0;
++
++  while (i < retryCount) {
++    if (i2c_write((0x40>>1), 0x21, 1, voltageReq, 1) == 0) {
++      break;
++    }
++    udelay(500); /* Wait for 0.5 msec */
++    i++;/* retry */
++  }
++  return i;
++}
++
++void power_down() {
++}
++
++/* Refer to SMB211 VOUT_COMMAND */
++int set_core_voltage_out(uchar voltageReq) {
++#define  MAX_STEPS          20   /* Covers a range of 200mV from 800mV to 1000mV in 10mV steps */
++#define  MAX_VOLTAGE     (0x64)  /* 1000mV */
++#define  MIN_VOLTAGE     (0x50)  /* 800mV  */
++#define  DEFAULT_VOLTAGE (0x64)  /* 1000mV as defined by Dauntless HW Spec */
++   uint32_t steps = 0, retry = 0, fail = 0;
++   int      stepUnit, rv;
++   uchar    buffer, startVal, finalVal;
++
++   finalVal = voltageReq;
++   /* Establish access to the I2C attached CPLD */
++   /* Read current voltage setting - can be different from coldstart value when performing soft reboot */
++   startVal = 0x0;
++   rv = read_vrm(&startVal, RETRY_COUNT);
++   /* If read value is out of range perform protective shutdown */
++   if (rv < RETRY_COUNT && (startVal < MIN_VOLTAGE || startVal > MAX_VOLTAGE)) {
++      printf("\nDetected Voltage(0x%x) above ROV. Performing protective power down! \n", startVal);
++      power_down();
++      return -1;
++   } else if (rv == RETRY_COUNT) {
++      printf("\nFailed to detect Initial Voltage. Performing protective power down! \n");
++      power_down();
++      return -1;
++   }
++
++   printf("VOUT Init: 0x%x ", startVal);
++   if (startVal == finalVal) {
++     /* No change in voltage required */
++     printf("VOUT Set: 0x%x \n", finalVal);
++     return 0;
++   }
++   stepUnit = (startVal < finalVal) ? 1 : -1;
++
++   /* Step through intermediate voltages to reach intended voltage */
++   buffer = startVal;
++   do {
++        buffer = buffer + stepUnit;
++        steps++;
++        if (write_vrm(&buffer, RETRY_COUNT) >= RETRY_COUNT) {
++           fail++;
++        }
++   } while(buffer != finalVal && steps < MAX_STEPS);
++
++   /* Read back set voltage for confirmation */
++   buffer = 0x0;
++   rv = read_vrm(&buffer, RETRY_COUNT);
++   if (rv < RETRY_COUNT && buffer == finalVal) {
++     /* Read voltage success and equals intended final value */
++     printf("VOUT Set: 0x%x Steps: %d Fail: %d\n", buffer, steps, fail);
++   } else {
++     /* Failures encountered during single stepping voltages. Power down */
++     printf("Failed to set voltage. Steps: %d Fail: %d. Performing protective power down! \n", steps, fail);
++     power_down();
++     return -1;
++   }
++   return 0;
++}
++
+ /*****************Helix4 SKUs *************
+ Device	Part Number	Frequency
+ FireScout	56548	315MHz
+@@ -235,6 +330,15 @@ int dram_init (void)
+ 	uint32_t sku_id, avs, coreV_req, coreV;
+ 	int status;
+ 
++        uchar outputVoltage[8] = {  0x64,   /* 1.0000v */ /* On Dauntless this is cold start value */
++                                    0x5f,   /* 0.9500v */
++                                    0x5a,   /* 0.9000v */
++                                    0x55,   /* 0.8500v */
++                                    0x50,   /* 0.8000v */
++                                    0xff,   /* reserved*/
++                                    0xff,   /* reserved*/
++                                    0xff};  /* reserved*/
++
+ 	/* init serdes early */
+ 	bcmiproc_serdes_init_early();
+ 
+@@ -247,10 +351,16 @@ int dram_init (void)
+ 	cmicd_init_soc();
+ 	avs = cmicd_schan_read_top(TOP_AVS_SEL_REG) & 0x07;
+ 	/* AVS 0 -> 1.00V, 1 -> 0.95V, 2 -> 0.90V, 3 -> 0.85V, 4 -> 0.80V */
+-	coreV_req = 1000 - (avs * 50); 
+-	if(coreV_req < 900)
+-		coreV_req = 900;
+ 	printf("AVS: 0x%x\n", avs);
++
++	i2c_init(I2C_SPEED_100KHz, 0xff);
++	i2c_set_bus_num(0);
++	
++	if (avs == 0 || avs == 0x01) { /* Only certain values 1.0V and 0.95V are supported by HX4
++                                          check outputVoltage map */
++           //set_core_voltage_out(outputVoltage[avs]);
++	}
++#if 0
+ 	status = set_smbus_mux(0);
+ 	if(status != 0) {
+ 		printf("Error: in set_smbus_mux\n");
+@@ -269,6 +379,7 @@ int dram_init (void)
+ 		return(status);
+ 	}
+ 	printf("Core Voltage set to: %d mV\n", coreV);
++#endif
+ 
+ 	ddr_init2();
+ #else
+@@ -334,14 +445,53 @@ int board_late_init (void)
+ #endif
+ 
+ 	linux_usbh_init();
++
++#ifdef CONFIG_POPULATE_SERIAL_NUMBER
++	populate_serial_number ();
++#endif
++
++#ifdef CONFIG_SYS_EEPROM_LOAD_ENV_MAC
++	mac_read_from_eeprom ();
++#endif
++ 
++	{
++		int need_save = 0;
++	if (!getenv ("ver")) {
++		run_command ("env default -f ver", 0);
++		need_save = 1;
++	}
++	if (!getenv ("onie_bootcmd")) {
++		run_command ("env default -f onie_bootcmd", 0);
++		need_save = 1;
++	}
++	if (!getenv("active")) {
++		run_command ("setenv active image1", 0);
++		need_save = 1;
++	}
++
++	if (!env_in_flash) need_save = 1;
++
++	if (need_save) {
++		run_command ("saveenv", 0);
++	}
++
++	if (!getenv("ethaddr")) {
++		/* Do not save to nenv */
++		run_command ("setenv bootdelay 1", 0);
++		run_command ("setenv bootcmd \"echo \"!!!!!No Mac Address, Run MFG Diags! Use sys_eeprom to add it\"", 0);
++	}
++
++	}
++
+ 	return status;
+ }
+ 
+ int board_eth_init(bd_t *bis)
+ {
+ 	int rc = -1;
++
+ #ifdef CONFIG_BCMIPROC_ETH
+-	printf("Registering eth\n");
++	//printf("Registering eth\n");
+ 	rc = bcmiproc_eth_register(0);
+ #endif
+ 	return rc;
+diff --git a/common/Makefile b/common/Makefile
+index 350491d..f84a19e 100644
+--- a/common/Makefile
++++ b/common/Makefile
+@@ -25,6 +25,8 @@ include $(TOPDIR)/config.mk
+ 
+ LIB	= $(obj)libcommon.o
+ 
++COBJS-$(CONFIG_CMD_SYS_EEPROM) += cmd_sys_eeprom.o
++
+ # core
+ ifndef CONFIG_SPL_BUILD
+ COBJS-y += main.o
+@@ -202,6 +204,7 @@ COBJS-$(CONFIG_MODEM_SUPPORT) += modem.o
+ COBJS-$(CONFIG_UPDATE_TFTP) += update.o
+ COBJS-$(CONFIG_USB_KEYBOARD) += usb_kbd.o
+ COBJS-$(CONFIG_CMD_DFU) += cmd_dfu.o
++COBJS-$(CONFIG_CMD_GPT) += cmd_gpt.o
+ endif
+ 
+ ifdef CONFIG_SPL_BUILD
+@@ -239,6 +242,11 @@ $(obj)env_embedded.o: $(src)env_embedded.c $(obj)../tools/envcrc
+ $(obj)../tools/envcrc:
+ 	$(MAKE) -C ../tools
+ 
++# SEE README.arm-unaligned-accesses
++# $(obj)hush.o: CFLAGS += $(PLATFORM_NO_UNALIGNED)
++# $(obj)fdt_support.o: CFLAGS += $(PLATFORM_NO_UNALIGNED)
++# $(obj)cmd_sys_eeprom.o: CFLAGS += $(PLATFORM_NO_UNALIGNED)
++
+ #########################################################################
+ 
+ # defines $(obj).depend target
+diff --git a/common/cmd_bootm.c b/common/cmd_bootm.c
+index 83fa5d7..6d19770 100644
+--- a/common/cmd_bootm.c
++++ b/common/cmd_bootm.c
+@@ -298,10 +298,11 @@ static int bootm_start(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[]
+ 				   &images.ft_addr, &images.ft_len);
+ 		if (ret) {
+ 			puts("Could not find a valid device tree\n");
+-			return 1;
+-		}
++			//return 1;
++		} else {
+ 
+-		set_working_fdt_addr(images.ft_addr);
++			set_working_fdt_addr(images.ft_addr);
++		}
+ #endif
+ 	}
+ 
+@@ -1588,10 +1589,11 @@ static int bootz_start(cmd_tbl_t *cmdtp, int flag, int argc,
+ 			   &images->ft_addr, &images->ft_len);
+ 	if (ret) {
+ 		puts("Could not find a valid device tree\n");
+-		return 1;
+-	}
++		//return 1;
++	} else {
+ 
+-	set_working_fdt_addr(images->ft_addr);
++		set_working_fdt_addr(images->ft_addr);
++	}
+ #endif
+ 
+ 	return 0;
+diff --git a/common/cmd_gpt.c b/common/cmd_gpt.c
+new file mode 100644
+index 0000000..1f12e6d
+--- /dev/null
++++ b/common/cmd_gpt.c
+@@ -0,0 +1,316 @@
++/*
++ * cmd_gpt.c -- GPT (GUID Partition Table) handling command
++ *
++ * Copyright (C) 2012 Samsung Electronics
++ * author: Lukasz Majewski <l.majewski@samsung.com>
++ * author: Piotr Wilczek <p.wilczek@samsung.com>
++ *
++ * SPDX-License-Identifier:	GPL-2.0+
++ */
++
++#include <common.h>
++#include <malloc.h>
++#include <command.h>
++#include <part_efi.h>
++#include <exports.h>
++#include <linux/ctype.h>
++#include <div64.h>
++
++#ifndef CONFIG_PARTITION_UUIDS
++#error CONFIG_PARTITION_UUIDS must be enabled for CONFIG_CMD_GPT to be enabled
++#endif
++
++/**
++ * extract_env(): Expand env name from string format '&{env_name}'
++ *                and return pointer to the env (if the env is set)
++ *
++ * @param str - pointer to string
++ * @param env - pointer to pointer to extracted env
++ *
++ * @return - zero on successful expand and env is set
++ */
++static char extract_env(const char *str, char **env)
++{
++	char *e, *s;
++
++	if (!str || strlen(str) < 4)
++		return -1;
++
++	if ((strncmp(str, "${", 2) == 0) && (str[strlen(str) - 1] == '}')) {
++		s = strdup(str);
++		if (s == NULL)
++			return -1;
++		memset(s + strlen(s) - 1, '\0', 1);
++		memmove(s, s + 2, strlen(s) - 1);
++		e = getenv(s);
++		free(s);
++		if (e == NULL) {
++			printf("Environmental '%s' not set\n", str);
++			return -1; /* env not set */
++		}
++		*env = e;
++		return 0;
++	}
++
++	return -1;
++}
++
++/**
++ * extract_val(): Extract value from a key=value pair list (comma separated).
++ *                Only value for the given key is returend.
++ *                Function allocates memory for the value, remember to free!
++ *
++ * @param str - pointer to string with key=values pairs
++ * @param key - pointer to the key to search for
++ *
++ * @return - pointer to allocated string with the value
++ */
++static char *extract_val(const char *str, const char *key)
++{
++	char *v, *k;
++	char *s, *strcopy;
++	char *new = NULL;
++
++	strcopy = strdup(str);
++	if (strcopy == NULL)
++		return NULL;
++
++	s = strcopy;
++	while (s) {
++		v = strsep(&s, ",");
++		if (!v)
++			break;
++		k = strsep(&v, "=");
++		if (!k)
++			break;
++		if  (strcmp(k, key) == 0) {
++			new = strdup(v);
++			break;
++		}
++	}
++
++	free(strcopy);
++
++	return new;
++}
++
++/**
++ * set_gpt_info(): Fill partition information from string
++ *		function allocates memory, remember to free!
++ *
++ * @param dev_desc - pointer block device descriptor
++ * @param str_part - pointer to string with partition information
++ * @param str_disk_guid - pointer to pointer to allocated string with disk guid
++ * @param partitions - pointer to pointer to allocated partitions array
++ * @param parts_count - number of partitions
++ *
++ * @return - zero on success, otherwise error
++ *
++ */
++static int set_gpt_info(block_dev_desc_t *dev_desc,
++			const char *str_part,
++			char **str_disk_guid,
++			disk_partition_t **partitions,
++			u8 *parts_count)
++{
++	char *tok, *str, *s;
++	int i;
++	char *val, *p;
++	int p_count;
++	disk_partition_t *parts;
++	int errno = 0;
++	uint64_t size_ll, start_ll;
++
++	debug("%s:  lba num: 0x%x %d\n", __func__,
++	      (unsigned int)dev_desc->lba, (unsigned int)dev_desc->lba);
++
++	if (str_part == NULL)
++		return -1;
++
++	str = strdup(str_part);
++
++	/* extract disk guid */
++	s = str;
++	tok = strsep(&s, ";");
++	val = extract_val(tok, "uuid_disk");
++	if (!val) {
++		free(str);
++		return -2;
++	}
++	if (extract_env(val, &p))
++		p = val;
++	*str_disk_guid = strdup(p);
++	free(val);
++
++	if (strlen(s) == 0)
++		return -3;
++
++	i = strlen(s) - 1;
++	if (s[i] == ';')
++		s[i] = '\0';
++
++	/* calculate expected number of partitions */
++	p_count = 1;
++	p = s;
++	while (*p) {
++		if (*p++ == ';')
++			p_count++;
++	}
++
++	/* allocate memory for partitions */
++	parts = calloc(sizeof(disk_partition_t), p_count);
++
++	/* retrieve partitions data from string */
++	for (i = 0; i < p_count; i++) {
++		tok = strsep(&s, ";");
++
++		if (tok == NULL)
++			break;
++
++		/* uuid */
++		val = extract_val(tok, "uuid");
++		if (!val) { /* 'uuid' is mandatory */
++			errno = -4;
++			goto err;
++		}
++		if (extract_env(val, &p))
++			p = val;
++		if (strlen(p) >= sizeof(parts[i].uuid)) {
++			printf("Wrong uuid format for partition %d\n", i);
++			errno = -4;
++			goto err;
++		}
++		strcpy((char *)parts[i].uuid, p);
++		free(val);
++
++		/* name */
++		val = extract_val(tok, "name");
++		if (!val) { /* name is mandatory */
++			errno = -4;
++			goto err;
++		}
++		if (extract_env(val, &p))
++			p = val;
++		if (strlen(p) >= sizeof(parts[i].name)) {
++			errno = -4;
++			goto err;
++		}
++		strcpy((char *)parts[i].name, p);
++		free(val);
++
++		/* size */
++		val = extract_val(tok, "size");
++		if (!val) { /* 'size' is mandatory */
++			errno = -4;
++			goto err;
++		}
++		if (extract_env(val, &p))
++			p = val;
++		size_ll = ustrtoull(p, &p, 0);
++		parts[i].size = lldiv(size_ll, dev_desc->blksz);
++		free(val);
++
++		/* start address */
++		val = extract_val(tok, "start");
++		if (val) { /* start address is optional */
++			if (extract_env(val, &p))
++				p = val;
++			start_ll = ustrtoull(p, &p, 0);
++			parts[i].start = lldiv(start_ll, dev_desc->blksz);
++			free(val);
++		}
++	}
++
++	*parts_count = p_count;
++	*partitions = parts;
++	free(str);
++
++	return 0;
++err:
++	free(str);
++	free(*str_disk_guid);
++	free(parts);
++
++	return errno;
++}
++
++static int gpt_default(block_dev_desc_t *blk_dev_desc, const char *str_part)
++{
++	int ret;
++	char *str_disk_guid;
++	u8 part_count = 0;
++	disk_partition_t *partitions = NULL;
++
++	if (!str_part)
++		return -1;
++
++	/* fill partitions */
++	ret = set_gpt_info(blk_dev_desc, str_part,
++			&str_disk_guid, &partitions, &part_count);
++	if (ret) {
++		if (ret == -1)
++			printf("No partition list provided\n");
++		if (ret == -2)
++			printf("Missing disk guid\n");
++		if ((ret == -3) || (ret == -4))
++			printf("Partition list incomplete\n");
++		return -1;
++	}
++
++	/* save partitions layout to disk */
++	gpt_restore(blk_dev_desc, str_disk_guid, partitions, part_count);
++	free(str_disk_guid);
++	free(partitions);
++
++	return 0;
++}
++
++/**
++ * do_gpt(): Perform GPT operations
++ *
++ * @param cmdtp - command name
++ * @param flag
++ * @param argc
++ * @param argv
++ *
++ * @return zero on success; otherwise error
++ */
++static int do_gpt(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
++{
++	int ret = CMD_RET_SUCCESS;
++	int dev = 0;
++	char *ep;
++	block_dev_desc_t *blk_dev_desc;
++
++	if (argc < 5)
++		return CMD_RET_USAGE;
++
++	/* command: 'write' */
++	if ((strcmp(argv[1], "write") == 0) && (argc == 5)) {
++		dev = (int)simple_strtoul(argv[3], &ep, 10);
++		if (!ep || ep[0] != '\0') {
++			printf("'%s' is not a number\n", argv[3]);
++			return CMD_RET_USAGE;
++		}
++		blk_dev_desc = get_dev(argv[2], dev);
++		if (!blk_dev_desc) {
++			printf("%s: %s dev %d NOT available\n",
++			       __func__, argv[2], dev);
++			return CMD_RET_FAILURE;
++		}
++
++		if (gpt_default(blk_dev_desc, argv[4]))
++			return CMD_RET_FAILURE;
++	} else {
++		return CMD_RET_USAGE;
++	}
++	return ret;
++}
++
++U_BOOT_CMD(gpt, CONFIG_SYS_MAXARGS, 1, do_gpt,
++	"GUID Partition Table",
++	"<command> <interface> <dev> <partitions_list>\n"
++	" - GUID partition table restoration\n"
++	" Restore GPT information on a device connected\n"
++	" to interface\n"
++);
+diff --git a/common/env_nand.c b/common/env_nand.c
+index 79e8033..17173c7 100644
+--- a/common/env_nand.c
++++ b/common/env_nand.c
+@@ -389,6 +389,8 @@ done:
+ #endif /* ! ENV_IS_EMBEDDED */
+ }
+ #else /* ! CONFIG_ENV_OFFSET_REDUND */
++
++char env_in_flash  = 1;
+ /*
+  * The legacy NAND code saved the environment in the first NAND
+  * device i.e., nand_dev_desc + 0. This is also the behaviour using
+@@ -420,7 +422,9 @@ void env_relocate_spec(void)
+ 		return;
+ 	}
+ 
+-	env_import(buf, 1);
++	if (!env_import(buf, 1)) {
++		env_in_flash = 0;
++	}
+ #endif /* ! ENV_IS_EMBEDDED */
+ }
+ #endif /* CONFIG_ENV_OFFSET_REDUND */
+diff --git a/common/spl/spl.c b/common/spl/spl.c
+index c582685..2181c7a 100644
+--- a/common/spl/spl.c
++++ b/common/spl/spl.c
+@@ -33,6 +33,12 @@
+ #include <malloc.h>
+ #include <linux/compiler.h>
+ 
++#ifdef CONFIG_HELIX4
++#include <asm/arch/iproc_regs.h>
++#include "asm/arch/socregs.h"
++#include "asm/iproc/reg_utils.h"
++#endif
++
+ DECLARE_GLOBAL_DATA_PTR;
+ 
+ extern int early_access_env_vars(void);
+@@ -198,6 +204,7 @@ void board_init_r(gd_t *dummy1, ulong dummy2)
+ 		spl_spi_load_image();
+ 		break;
+ #endif
++#if 0
+ #ifdef CONFIG_SPL_ETH_SUPPORT
+ 	case BOOT_DEVICE_CPGMAC:
+ #ifdef CONFIG_SPL_ETH_DEVICE
+@@ -207,6 +214,7 @@ void board_init_r(gd_t *dummy1, ulong dummy2)
+ #endif
+ 		break;
+ #endif
++#endif
+ 	default:
+ 		debug("SPL: Un-supported Boot Device\n");
+ 		hang();
+@@ -236,6 +244,16 @@ void preloader_console_init(void)
+ {
+     int ret;
+ 
++#ifdef CONFIG_HELIX4
++	/* HACK for HELIX4, because helix4/lowlevel_init.S part can not set into */
++	uint32_t uartClkdiv;
++	uartClkdiv = reg32_read((volatile uint32_t *)ChipcommonA_ClkDiv);
++	uartClkdiv &= 0xffffff00;
++	uartClkdiv |= 0x02;
++	reg32_write((volatile uint32_t *)ChipcommonA_ClkDiv, uartClkdiv);
++#endif
++
++
+ 	gd->bd = &bdata;
+ 	gd->flags |= GD_FLG_RELOC;
+ 
+diff --git a/common/usb_storage.c b/common/usb_storage.c
+index 11e2f7a..cf3f9ae 100644
+--- a/common/usb_storage.c
++++ b/common/usb_storage.c
+@@ -1054,7 +1054,7 @@ static void usb_bin_fixup(struct usb_device_descriptor descriptor,
+ }
+ #endif /* CONFIG_USB_BIN_FIXUP */
+ //#define USB_MAX_READ_BLK 20
+-#define USB_MAX_READ_BLK 4
++#define USB_MAX_READ_BLK 4095
+ unsigned long usb_stor_read(int device, unsigned long blknr,
+ 			    unsigned long blkcnt, void *buffer)
+ {
+diff --git a/disk/part_efi.c b/disk/part_efi.c
+index 264ea9c..7665017 100644
+--- a/disk/part_efi.c
++++ b/disk/part_efi.c
+@@ -34,9 +34,11 @@
+ #include <command.h>
+ #include <ide.h>
+ #include <malloc.h>
+-#include "part_efi.h"
++#include <part_efi.h>
+ #include <linux/ctype.h>
+ 
++DECLARE_GLOBAL_DATA_PTR;
++
+ #if defined(CONFIG_CMD_IDE) || \
+     defined(CONFIG_CMD_SATA) || \
+     defined(CONFIG_CMD_SCSI) || \
+@@ -44,34 +46,6 @@
+     defined(CONFIG_MMC) || \
+     defined(CONFIG_SYSTEMACE)
+ 
+-/* Convert char[2] in little endian format to the host format integer
+- */
+-static inline unsigned short le16_to_int(unsigned char *le16)
+-{
+-	return ((le16[1] << 8) + le16[0]);
+-}
+-
+-/* Convert char[4] in little endian format to the host format integer
+- */
+-static inline unsigned long le32_to_int(unsigned char *le32)
+-{
+-	return ((le32[3] << 24) + (le32[2] << 16) + (le32[1] << 8) + le32[0]);
+-}
+-
+-/* Convert char[8] in little endian format to the host format integer
+- */
+-static inline unsigned long long le64_to_int(unsigned char *le64)
+-{
+-	return (((unsigned long long)le64[7] << 56) +
+-		((unsigned long long)le64[6] << 48) +
+-		((unsigned long long)le64[5] << 40) +
+-		((unsigned long long)le64[4] << 32) +
+-		((unsigned long long)le64[3] << 24) +
+-		((unsigned long long)le64[2] << 16) +
+-		((unsigned long long)le64[1] << 8) +
+-		(unsigned long long)le64[0]);
+-}
+-
+ /**
+  * efi_crc32() - EFI version of crc32 function
+  * @buf: buffer to calculate crc32 of
+@@ -79,7 +53,7 @@ static inline unsigned long long le64_to_int(unsigned char *le64)
+  *
+  * Description: Returns EFI-style CRC32 value for @buf
+  */
+-static inline unsigned long efi_crc32(const void *buf, unsigned long len)
++static inline u32 efi_crc32(const void *buf, u32 len)
+ {
+ 	return crc32(0, buf, len);
+ }
+@@ -90,13 +64,10 @@ static inline unsigned long efi_crc32(const void *buf, unsigned long len)
+ 
+ static int pmbr_part_valid(struct partition *part);
+ static int is_pmbr_valid(legacy_mbr * mbr);
+-
+ static int is_gpt_valid(block_dev_desc_t * dev_desc, unsigned long long lba,
+ 				gpt_header * pgpt_head, gpt_entry ** pgpt_pte);
+-
+ static gpt_entry *alloc_read_gpt_entries(block_dev_desc_t * dev_desc,
+ 				gpt_header * pgpt_head);
+-
+ static int is_pte_valid(gpt_entry * pte);
+ 
+ static char *print_efiname(gpt_entry *pte)
+@@ -113,6 +84,36 @@ static char *print_efiname(gpt_entry *pte)
+ 	return name;
+ }
+ 
++static void uuid_string(unsigned char *uuid, char *str)
++{
++	static const u8 le[16] = {3, 2, 1, 0, 5, 4, 7, 6, 8, 9, 10, 11,
++				  12, 13, 14, 15};
++	int i;
++
++	for (i = 0; i < 16; i++) {
++		sprintf(str, "%02x", uuid[le[i]]);
++		str += 2;
++		switch (i) {
++		case 3:
++		case 5:
++		case 7:
++		case 9:
++			*str++ = '-';
++			break;
++		}
++	}
++}
++
++static efi_guid_t system_guid = PARTITION_SYSTEM_GUID;
++
++static inline int is_bootable(gpt_entry *p)
++{
++	return p->attributes.fields.legacy_bios_bootable ||
++		!memcmp(&(p->partition_type_guid), &system_guid,
++			sizeof(efi_guid_t));
++}
++
++#ifdef CONFIG_EFI_PARTITION
+ /*
+  * Public Functions (include/part.h)
+  */
+@@ -122,6 +123,7 @@ void print_part_efi(block_dev_desc_t * dev_desc)
+ 	ALLOC_CACHE_ALIGN_BUFFER(gpt_header, gpt_head, 1);
+ 	gpt_entry *gpt_pte = NULL;
+ 	int i = 0;
++	char uuid[37];
+ 
+ 	if (!dev_desc) {
+ 		printf("%s: Invalid Argument(s)\n", __func__);
+@@ -136,17 +138,25 @@ void print_part_efi(block_dev_desc_t * dev_desc)
+ 
+ 	debug("%s: gpt-entry at %p\n", __func__, gpt_pte);
+ 
+-	printf("Part\tName\t\t\tStart LBA\tEnd LBA\n");
+-	for (i = 0; i < le32_to_int(gpt_head->num_partition_entries); i++) {
++	printf("Part\tStart LBA\tEnd LBA\t\tName\n");
++	printf("\tAttributes\n");
++	printf("\tType UUID\n");
++	printf("\tPartition UUID\n");
+ 
+-		if (is_pte_valid(&gpt_pte[i])) {
+-			printf("%3d\t%-18s\t0x%08llX\t0x%08llX\n", (i + 1),
+-				print_efiname(&gpt_pte[i]),
+-				le64_to_int(gpt_pte[i].starting_lba),
+-				le64_to_int(gpt_pte[i].ending_lba));
+-		} else {
+-			break;	/* Stop at the first non valid PTE */
+-		}
++	for (i = 0; i < le32_to_cpu(gpt_head->num_partition_entries); i++) {
++		/* Stop at the first non valid PTE */
++		if (!is_pte_valid(&gpt_pte[i]))
++			break;
++
++		printf("%3d\t0x%08llx\t0x%08llx\t\"%s\"\n", (i + 1),
++			le64_to_cpu(gpt_pte[i].starting_lba),
++			le64_to_cpu(gpt_pte[i].ending_lba),
++			print_efiname(&gpt_pte[i]));
++		printf("\tattrs:\t0x%016llx\n", gpt_pte[i].attributes.raw);
++		uuid_string(gpt_pte[i].partition_type_guid.b, uuid);
++		printf("\ttype:\t%s\n", uuid);
++		uuid_string(gpt_pte[i].unique_partition_guid.b, uuid);
++		printf("\tuuid:\t%s\n", uuid);
+ 	}
+ 
+ 	/* Remember to free pte */
+@@ -154,28 +164,6 @@ void print_part_efi(block_dev_desc_t * dev_desc)
+ 	return;
+ }
+ 
+-#ifdef CONFIG_PARTITION_UUIDS
+-static void uuid_string(unsigned char *uuid, char *str)
+-{
+-	static const u8 le[16] = {3, 2, 1, 0, 5, 4, 7, 6, 8, 9, 10, 11,
+-				  12, 13, 14, 15};
+-	int i;
+-
+-	for (i = 0; i < 16; i++) {
+-		sprintf(str, "%02x", uuid[le[i]]);
+-		str += 2;
+-		switch (i) {
+-		case 3:
+-		case 5:
+-		case 7:
+-		case 9:
+-			*str++ = '-';
+-			break;
+-		}
+-	}
+-}
+-#endif
+-
+ int get_partition_info_efi(block_dev_desc_t * dev_desc, int part,
+ 				disk_partition_t * info)
+ {
+@@ -195,7 +183,7 @@ int get_partition_info_efi(block_dev_desc_t * dev_desc, int part,
+ 		return -1;
+ 	}
+ 
+-	if (part > le32_to_int(gpt_head->num_partition_entries) ||
++	if (part > le32_to_cpu(gpt_head->num_partition_entries) ||
+ 	    !is_pte_valid(&gpt_pte[part - 1])) {
+ 		printf("%s: *** ERROR: Invalid partition number %d ***\n",
+ 			__func__, part);
+@@ -203,15 +191,16 @@ int get_partition_info_efi(block_dev_desc_t * dev_desc, int part,
+ 	}
+ 
+ 	/* The ulong casting limits the maximum disk size to 2 TB */
+-	info->start = (ulong) le64_to_int(gpt_pte[part - 1].starting_lba);
++	info->start = (u64)le64_to_cpu(gpt_pte[part - 1].starting_lba);
+ 	/* The ending LBA is inclusive, to calculate size, add 1 to it */
+-	info->size = ((ulong)le64_to_int(gpt_pte[part - 1].ending_lba) + 1)
++	info->size = ((u64)le64_to_cpu(gpt_pte[part - 1].ending_lba) + 1)
+ 		     - info->start;
+ 	info->blksz = GPT_BLOCK_SIZE;
+ 
+ 	sprintf((char *)info->name, "%s",
+ 			print_efiname(&gpt_pte[part - 1]));
+ 	sprintf((char *)info->type, "U-Boot");
++	info->bootable = is_bootable(&gpt_pte[part - 1]);
+ #ifdef CONFIG_PARTITION_UUIDS
+ 	uuid_string(gpt_pte[part - 1].unique_partition_guid.b, info->uuid);
+ #endif
+@@ -236,6 +225,281 @@ int test_part_efi(block_dev_desc_t * dev_desc)
+ 	return 0;
+ }
+ 
++/**
++ * set_protective_mbr(): Set the EFI protective MBR
++ * @param dev_desc - block device descriptor
++ *
++ * @return - zero on success, otherwise error
++ */
++static int set_protective_mbr(block_dev_desc_t *dev_desc)
++{
++	legacy_mbr *p_mbr;
++
++	/* Setup the Protective MBR */
++	p_mbr = calloc(1, sizeof(p_mbr));
++	if (p_mbr == NULL) {
++		printf("%s: calloc failed!\n", __func__);
++		return -1;
++	}
++	/* Append signature */
++	p_mbr->signature = MSDOS_MBR_SIGNATURE;
++	p_mbr->partition_record[0].sys_ind = EFI_PMBR_OSTYPE_EFI_GPT;
++	p_mbr->partition_record[0].start_sect = 1;
++	p_mbr->partition_record[0].nr_sects = (u32) dev_desc->lba;
++
++	/* Write MBR sector to the MMC device */
++	if (dev_desc->block_write(dev_desc->dev, 0, 1, p_mbr) != 1) {
++		printf("** Can't write to device %d **\n",
++			dev_desc->dev);
++		free(p_mbr);
++		return -1;
++	}
++
++	free(p_mbr);
++	return 0;
++}
++
++/**
++ * string_uuid(); Convert UUID stored as string to bytes
++ *
++ * @param uuid - UUID represented as string
++ * @param dst - GUID buffer
++ *
++ * @return return 0 on successful conversion
++ */
++static int string_uuid(char *uuid, u8 *dst)
++{
++	efi_guid_t guid;
++	u16 b, c, d;
++	u64 e;
++	u32 a;
++	u8 *p;
++	u8 i;
++
++	const u8 uuid_str_len = 36;
++
++	/* The UUID is written in text: */
++	/* 1        9    14   19   24 */
++	/* xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx */
++
++	debug("%s: uuid: %s\n", __func__, uuid);
++
++	if (strlen(uuid) != uuid_str_len)
++		return -1;
++
++	for (i = 0; i < uuid_str_len; i++) {
++		if ((i == 8) || (i == 13) || (i == 18) || (i == 23)) {
++			if (uuid[i] != '-')
++				return -1;
++		} else {
++			if (!isxdigit(uuid[i]))
++				return -1;
++		}
++	}
++
++	a = (u32)simple_strtoul(uuid, NULL, 16);
++	b = (u16)simple_strtoul(uuid + 9, NULL, 16);
++	c = (u16)simple_strtoul(uuid + 14, NULL, 16);
++	d = (u16)simple_strtoul(uuid + 19, NULL, 16);
++	e = (u64)simple_strtoull(uuid + 24, NULL, 16);
++
++	p = (u8 *) &e;
++	guid = EFI_GUID(a, b, c, d >> 8, d & 0xFF,
++			*(p + 5), *(p + 4), *(p + 3),
++			*(p + 2), *(p + 1) , *p);
++
++	memcpy(dst, guid.b, sizeof(efi_guid_t));
++
++	return 0;
++}
++
++int write_gpt_table(block_dev_desc_t *dev_desc,
++		gpt_header *gpt_h, gpt_entry *gpt_e)
++{
++	const int pte_blk_num = (gpt_h->num_partition_entries
++		* sizeof(gpt_entry)) / dev_desc->blksz;
++
++	u32 calc_crc32;
++	u64 val;
++
++	debug("max lba: %x\n", (u32) dev_desc->lba);
++	/* Setup the Protective MBR */
++	if (set_protective_mbr(dev_desc) < 0)
++		goto err;
++
++	/* Generate CRC for the Primary GPT Header */
++	calc_crc32 = efi_crc32((const unsigned char *)gpt_e,
++			      le32_to_cpu(gpt_h->num_partition_entries) *
++			      le32_to_cpu(gpt_h->sizeof_partition_entry));
++	gpt_h->partition_entry_array_crc32 = cpu_to_le32(calc_crc32);
++
++	calc_crc32 = efi_crc32((const unsigned char *)gpt_h,
++			      le32_to_cpu(gpt_h->header_size));
++	gpt_h->header_crc32 = cpu_to_le32(calc_crc32);
++
++	/* Write the First GPT to the block right after the Legacy MBR */
++	if (dev_desc->block_write(dev_desc->dev, 1, 1, gpt_h) != 1)
++		goto err;
++
++	if (dev_desc->block_write(dev_desc->dev, 2, pte_blk_num, gpt_e)
++	    != pte_blk_num)
++		goto err;
++
++	/* recalculate the values for the Second GPT Header */
++	val = le64_to_cpu(gpt_h->my_lba);
++	gpt_h->my_lba = gpt_h->alternate_lba;
++	gpt_h->alternate_lba = cpu_to_le64(val);
++	gpt_h->header_crc32 = 0;
++
++	calc_crc32 = efi_crc32((const unsigned char *)gpt_h,
++			      le32_to_cpu(gpt_h->header_size));
++	gpt_h->header_crc32 = cpu_to_le32(calc_crc32);
++
++	if (dev_desc->block_write(dev_desc->dev,
++				  le32_to_cpu(gpt_h->last_usable_lba + 1),
++				  pte_blk_num, gpt_e) != pte_blk_num)
++		goto err;
++
++	if (dev_desc->block_write(dev_desc->dev,
++				  le32_to_cpu(gpt_h->my_lba), 1, gpt_h) != 1)
++		goto err;
++
++	debug("GPT successfully written to block device!\n");
++	return 0;
++
++ err:
++	printf("** Can't write to device %d **\n", dev_desc->dev);
++	return -1;
++}
++
++int gpt_fill_pte(gpt_header *gpt_h, gpt_entry *gpt_e,
++		disk_partition_t *partitions, int parts)
++{
++	u32 offset = (u32)le32_to_cpu(gpt_h->first_usable_lba);
++	ulong start;
++	int i, k;
++	size_t name_len;
++#ifdef CONFIG_PARTITION_UUIDS
++	char *str_uuid;
++#endif
++
++	for (i = 0; i < parts; i++) {
++		/* partition starting lba */
++		start = partitions[i].start;
++		if (start && (start < offset)) {
++			printf("Partition overlap\n");
++			return -1;
++		}
++		if (start) {
++			gpt_e[i].starting_lba = cpu_to_le64(start);
++			offset = start + partitions[i].size;
++		} else {
++			gpt_e[i].starting_lba = cpu_to_le64(offset);
++			offset += partitions[i].size;
++		}
++		if (offset >= gpt_h->last_usable_lba) {
++			printf("Partitions layout exceds disk size\n");
++			return -1;
++		}
++		/* partition ending lba */
++		if ((i == parts - 1) && (partitions[i].size == 0))
++			/* extend the last partition to maximuim */
++			gpt_e[i].ending_lba = gpt_h->last_usable_lba;
++		else
++			gpt_e[i].ending_lba = cpu_to_le64(offset - 1);
++
++		/* partition type GUID */
++		memcpy(gpt_e[i].partition_type_guid.b,
++			&PARTITION_BASIC_DATA_GUID, 16);
++
++#ifdef CONFIG_PARTITION_UUIDS
++		str_uuid = partitions[i].uuid;
++		if (string_uuid(str_uuid, gpt_e[i].unique_partition_guid.b)) {
++			printf("Partition no. %d: invalid guid: %s\n",
++				i, str_uuid);
++			return -1;
++		}
++#endif
++
++		/* partition attributes */
++		memset(&gpt_e[i].attributes, 0,
++		       sizeof(gpt_entry_attributes));
++
++		/* partition name */
++		name_len = sizeof(gpt_e[i].partition_name)
++			/ sizeof(efi_char16_t);
++		for (k = 0; k < name_len; k++)
++			gpt_e[i].partition_name[k] =
++				(efi_char16_t)(partitions[i].name[k]);
++
++		debug("%s: name: %s offset[%d]: 0x%x size[%d]: 0x%lx\n",
++		      __func__, partitions[i].name, i,
++		      offset, i, partitions[i].size);
++	}
++
++	return 0;
++}
++
++int gpt_fill_header(block_dev_desc_t *dev_desc, gpt_header *gpt_h,
++		char *str_guid, int parts_count)
++{
++	gpt_h->signature = cpu_to_le64(GPT_HEADER_SIGNATURE);
++	gpt_h->revision = cpu_to_le32(GPT_HEADER_REVISION_V1);
++	gpt_h->header_size = cpu_to_le32(sizeof(gpt_header));
++	gpt_h->my_lba = cpu_to_le64(1);
++	gpt_h->alternate_lba = cpu_to_le64(dev_desc->lba - 1);
++	gpt_h->first_usable_lba = cpu_to_le64(34);
++	gpt_h->last_usable_lba = cpu_to_le64(dev_desc->lba - 34);
++	gpt_h->partition_entry_lba = cpu_to_le64(2);
++	gpt_h->num_partition_entries = cpu_to_le32(GPT_ENTRY_NUMBERS);
++	gpt_h->sizeof_partition_entry = cpu_to_le32(sizeof(gpt_entry));
++	gpt_h->header_crc32 = 0;
++	gpt_h->partition_entry_array_crc32 = 0;
++
++	if (string_uuid(str_guid, gpt_h->disk_guid.b))
++		return -1;
++
++	return 0;
++}
++
++int gpt_restore(block_dev_desc_t *dev_desc, char *str_disk_guid,
++		disk_partition_t *partitions, int parts_count)
++{
++	int ret;
++
++	gpt_header *gpt_h = calloc(1, sizeof(gpt_header));
++	if (gpt_h == NULL) {
++		printf("%s: calloc failed!\n", __func__);
++		return -1;
++	}
++
++	gpt_entry *gpt_e = calloc(GPT_ENTRY_NUMBERS, sizeof(gpt_entry));
++	if (gpt_e == NULL) {
++		printf("%s: calloc failed!\n", __func__);
++		free(gpt_h);
++		return -1;
++	}
++
++	/* Generate Primary GPT header (LBA1) */
++	ret = gpt_fill_header(dev_desc, gpt_h, str_disk_guid, parts_count);
++	if (ret)
++		goto err;
++
++	/* Generate partition entries */
++	ret = gpt_fill_pte(gpt_h, gpt_e, partitions, parts_count);
++	if (ret)
++		goto err;
++
++	/* Write GPT partition table */
++	ret = write_gpt_table(dev_desc, gpt_h, gpt_e);
++
++err:
++	free(gpt_e);
++	free(gpt_h);
++	return ret;
++}
++#endif
++
+ /*
+  * Private functions
+  */
+@@ -247,7 +511,7 @@ int test_part_efi(block_dev_desc_t * dev_desc)
+ static int pmbr_part_valid(struct partition *part)
+ {
+ 	if (part->sys_ind == EFI_PMBR_OSTYPE_EFI_GPT &&
+-		le32_to_int(part->start_sect) == 1UL) {
++		le32_to_cpu(part->start_sect) == 1UL) {
+ 		return 1;
+ 	}
+ 
+@@ -266,9 +530,8 @@ static int is_pmbr_valid(legacy_mbr * mbr)
+ {
+ 	int i = 0;
+ 
+-	if (!mbr || le16_to_int(mbr->signature) != MSDOS_MBR_SIGNATURE) {
++	if (!mbr || le16_to_cpu(mbr->signature) != MSDOS_MBR_SIGNATURE)
+ 		return 0;
+-	}
+ 
+ 	for (i = 0; i < 4; i++) {
+ 		if (pmbr_part_valid(&mbr->partition_record[i])) {
+@@ -291,8 +554,8 @@ static int is_pmbr_valid(legacy_mbr * mbr)
+ static int is_gpt_valid(block_dev_desc_t * dev_desc, unsigned long long lba,
+ 			gpt_header * pgpt_head, gpt_entry ** pgpt_pte)
+ {
+-	unsigned char crc32_backup[4] = { 0 };
+-	unsigned long calc_crc32;
++	u32 crc32_backup = 0;
++	u32 calc_crc32;
+ 	unsigned long long lastlba;
+ 
+ 	if (!dev_desc || !pgpt_head) {
+@@ -307,54 +570,54 @@ static int is_gpt_valid(block_dev_desc_t * dev_desc, unsigned long long lba,
+ 	}
+ 
+ 	/* Check the GPT header signature */
+-	if (le64_to_int(pgpt_head->signature) != GPT_HEADER_SIGNATURE) {
++	if (le64_to_cpu(pgpt_head->signature) != GPT_HEADER_SIGNATURE) {
+ 		printf("GUID Partition Table Header signature is wrong:"
+ 			"0x%llX != 0x%llX\n",
+-			(unsigned long long)le64_to_int(pgpt_head->signature),
+-			(unsigned long long)GPT_HEADER_SIGNATURE);
++			le64_to_cpu(pgpt_head->signature),
++			GPT_HEADER_SIGNATURE);
+ 		return 0;
+ 	}
+ 
+ 	/* Check the GUID Partition Table CRC */
+-	memcpy(crc32_backup, pgpt_head->header_crc32, sizeof(crc32_backup));
+-	memset(pgpt_head->header_crc32, 0, sizeof(pgpt_head->header_crc32));
++	memcpy(&crc32_backup, &pgpt_head->header_crc32, sizeof(crc32_backup));
++	memset(&pgpt_head->header_crc32, 0, sizeof(pgpt_head->header_crc32));
+ 
+ 	calc_crc32 = efi_crc32((const unsigned char *)pgpt_head,
+-		le32_to_int(pgpt_head->header_size));
++		le32_to_cpu(pgpt_head->header_size));
+ 
+-	memcpy(pgpt_head->header_crc32, crc32_backup, sizeof(crc32_backup));
++	memcpy(&pgpt_head->header_crc32, &crc32_backup, sizeof(crc32_backup));
+ 
+-	if (calc_crc32 != le32_to_int(crc32_backup)) {
++	if (calc_crc32 != le32_to_cpu(crc32_backup)) {
+ 		printf("GUID Partition Table Header CRC is wrong:"
+-			"0x%08lX != 0x%08lX\n",
+-			le32_to_int(crc32_backup), calc_crc32);
++			"0x%x != 0x%x\n",
++		       le32_to_cpu(crc32_backup), calc_crc32);
+ 		return 0;
+ 	}
+ 
+ 	/* Check that the my_lba entry points to the LBA that contains the GPT */
+-	if (le64_to_int(pgpt_head->my_lba) != lba) {
++	if (le64_to_cpu(pgpt_head->my_lba) != lba) {
+ 		printf("GPT: my_lba incorrect: %llX != %llX\n",
+-			(unsigned long long)le64_to_int(pgpt_head->my_lba),
+-			(unsigned long long)lba);
++			le64_to_cpu(pgpt_head->my_lba),
++			lba);
+ 		return 0;
+ 	}
+ 
+ 	/* Check the first_usable_lba and last_usable_lba are within the disk. */
+ 	lastlba = (unsigned long long)dev_desc->lba;
+-	if (le64_to_int(pgpt_head->first_usable_lba) > lastlba) {
++	if (le64_to_cpu(pgpt_head->first_usable_lba) > lastlba) {
+ 		printf("GPT: first_usable_lba incorrect: %llX > %llX\n",
+-			le64_to_int(pgpt_head->first_usable_lba), lastlba);
++			le64_to_cpu(pgpt_head->first_usable_lba), lastlba);
+ 		return 0;
+ 	}
+-	if (le64_to_int(pgpt_head->last_usable_lba) > lastlba) {
++	if (le64_to_cpu(pgpt_head->last_usable_lba) > lastlba) {
+ 		printf("GPT: last_usable_lba incorrect: %llX > %llX\n",
+-			le64_to_int(pgpt_head->last_usable_lba), lastlba);
++			(u64) le64_to_cpu(pgpt_head->last_usable_lba), lastlba);
+ 		return 0;
+ 	}
+ 
+ 	debug("GPT: first_usable_lba: %llX last_usable_lba %llX last lba %llX\n",
+-		le64_to_int(pgpt_head->first_usable_lba),
+-		le64_to_int(pgpt_head->last_usable_lba), lastlba);
++		le64_to_cpu(pgpt_head->first_usable_lba),
++		le64_to_cpu(pgpt_head->last_usable_lba), lastlba);
+ 
+ 	/* Read and allocate Partition Table Entries */
+ 	*pgpt_pte = alloc_read_gpt_entries(dev_desc, pgpt_head);
+@@ -365,13 +628,13 @@ static int is_gpt_valid(block_dev_desc_t * dev_desc, unsigned long long lba,
+ 
+ 	/* Check the GUID Partition Table Entry Array CRC */
+ 	calc_crc32 = efi_crc32((const unsigned char *)*pgpt_pte,
+-		le32_to_int(pgpt_head->num_partition_entries) *
+-		le32_to_int(pgpt_head->sizeof_partition_entry));
++		le32_to_cpu(pgpt_head->num_partition_entries) *
++		le32_to_cpu(pgpt_head->sizeof_partition_entry));
+ 
+-	if (calc_crc32 != le32_to_int(pgpt_head->partition_entry_array_crc32)) {
++	if (calc_crc32 != le32_to_cpu(pgpt_head->partition_entry_array_crc32)) {
+ 		printf("GUID Partition Table Entry Array CRC is wrong:"
+-			"0x%08lX != 0x%08lX\n",
+-			le32_to_int(pgpt_head->partition_entry_array_crc32),
++			"0x%x != 0x%x\n",
++			le32_to_cpu(pgpt_head->partition_entry_array_crc32),
+ 			calc_crc32);
+ 
+ 		free(*pgpt_pte);
+@@ -402,12 +665,12 @@ static gpt_entry *alloc_read_gpt_entries(block_dev_desc_t * dev_desc,
+ 		return NULL;
+ 	}
+ 
+-	count = le32_to_int(pgpt_head->num_partition_entries) *
+-		le32_to_int(pgpt_head->sizeof_partition_entry);
++	count = le32_to_cpu(pgpt_head->num_partition_entries) *
++		le32_to_cpu(pgpt_head->sizeof_partition_entry);
+ 
+-	debug("%s: count = %lu * %lu = %u\n", __func__,
+-		le32_to_int(pgpt_head->num_partition_entries),
+-		le32_to_int(pgpt_head->sizeof_partition_entry), count);
++	debug("%s: count = %u * %u = %zu\n", __func__,
++	      (u32) le32_to_cpu(pgpt_head->num_partition_entries),
++	      (u32) le32_to_cpu(pgpt_head->sizeof_partition_entry), count);
+ 
+ 	/* Allocate memory for PTE, remember to FREE */
+ 	if (count != 0) {
+@@ -415,14 +678,15 @@ static gpt_entry *alloc_read_gpt_entries(block_dev_desc_t * dev_desc,
+ 	}
+ 
+ 	if (count == 0 || pte == NULL) {
+-		printf("%s: ERROR: Can't allocate 0x%X bytes for GPT Entries\n",
++		printf("%s: ERROR: Can't allocate 0x%zX "
++		       "bytes for GPT Entries\n",
+ 			__func__, count);
+ 		return NULL;
+ 	}
+ 
+ 	/* Read GPT Entries from device */
+ 	if (dev_desc->block_read (dev_desc->dev,
+-		(unsigned long)le64_to_int(pgpt_head->partition_entry_lba),
++		le64_to_cpu(pgpt_head->partition_entry_lba),
+ 		(lbaint_t) (count / GPT_BLOCK_SIZE), pte)
+ 		!= (count / GPT_BLOCK_SIZE)) {
+ 
+@@ -457,7 +721,7 @@ static int is_pte_valid(gpt_entry * pte)
+ 		sizeof(unused_guid.b)) == 0) {
+ 
+ 		debug("%s: Found an unused PTE GUID at 0x%08X\n", __func__,
+-		(unsigned int)pte);
++		      (unsigned int)(uintptr_t)pte);
+ 
+ 		return 0;
+ 	} else {
+diff --git a/disk/part_efi.h b/disk/part_efi.h
+deleted file mode 100644
+index 5903e7c..0000000
+--- a/disk/part_efi.h
++++ /dev/null
+@@ -1,139 +0,0 @@
+-/*
+- * Copyright (C) 2008 RuggedCom, Inc.
+- * Richard Retanubun <RichardRetanubun@RuggedCom.com>
+- *
+- * See file CREDITS for list of people who contributed to this
+- * project.
+- *
+- * This program is free software; you can redistribute it and/or
+- * modify it under the terms of the GNU General Public License as
+- * published by the Free Software Foundation; either version 2 of
+- * the License, or (at your option) any later version.
+- *
+- * This program is distributed in the hope that it will be useful,
+- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the
+- * GNU General Public License for more details.
+- *
+- * You should have received a copy of the GNU General Public License
+- * along with this program; if not, write to the Free Software
+- * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
+- * MA 02111-1307 USA
+- */
+-
+-/*
+- * See also linux/fs/partitions/efi.h
+- *
+- * EFI GUID Partition Table
+- * Per Intel EFI Specification v1.02
+- * http://developer.intel.com/technology/efi/efi.htm
+-*/
+-
+-#ifndef _DISK_PART_EFI_H
+-#define _DISK_PART_EFI_H
+-
+-#define MSDOS_MBR_SIGNATURE 0xAA55
+-#define EFI_PMBR_OSTYPE_EFI 0xEF
+-#define EFI_PMBR_OSTYPE_EFI_GPT 0xEE
+-
+-#define GPT_BLOCK_SIZE 512
+-#define GPT_HEADER_SIGNATURE 0x5452415020494645ULL
+-#define GPT_HEADER_REVISION_V1 0x00010000
+-#define GPT_PRIMARY_PARTITION_TABLE_LBA 1ULL
+-#define GPT_ENTRY_NAME "gpt"
+-
+-#define EFI_GUID(a,b,c,d0,d1,d2,d3,d4,d5,d6,d7) \
+-	((efi_guid_t) \
+-	{{ (a) & 0xff, ((a) >> 8) & 0xff, ((a) >> 16) & 0xff, ((a) >> 24) & 0xff, \
+-		(b) & 0xff, ((b) >> 8) & 0xff, \
+-		(c) & 0xff, ((c) >> 8) & 0xff, \
+-		(d0), (d1), (d2), (d3), (d4), (d5), (d6), (d7) }})
+-
+-#define PARTITION_SYSTEM_GUID \
+-	EFI_GUID( 0xC12A7328, 0xF81F, 0x11d2, \
+-		0xBA, 0x4B, 0x00, 0xA0, 0xC9, 0x3E, 0xC9, 0x3B)
+-#define LEGACY_MBR_PARTITION_GUID \
+-	EFI_GUID( 0x024DEE41, 0x33E7, 0x11d3, \
+-		0x9D, 0x69, 0x00, 0x08, 0xC7, 0x81, 0xF3, 0x9F)
+-#define PARTITION_MSFT_RESERVED_GUID \
+-	EFI_GUID( 0xE3C9E316, 0x0B5C, 0x4DB8, \
+-		0x81, 0x7D, 0xF9, 0x2D, 0xF0, 0x02, 0x15, 0xAE)
+-#define PARTITION_BASIC_DATA_GUID \
+-	EFI_GUID( 0xEBD0A0A2, 0xB9E5, 0x4433, \
+-		0x87, 0xC0, 0x68, 0xB6, 0xB7, 0x26, 0x99, 0xC7)
+-#define PARTITION_LINUX_RAID_GUID \
+-	EFI_GUID( 0xa19d880f, 0x05fc, 0x4d3b, \
+-		0xa0, 0x06, 0x74, 0x3f, 0x0f, 0x84, 0x91, 0x1e)
+-#define PARTITION_LINUX_SWAP_GUID \
+-	EFI_GUID( 0x0657fd6d, 0xa4ab, 0x43c4, \
+-		0x84, 0xe5, 0x09, 0x33, 0xc8, 0x4b, 0x4f, 0x4f)
+-#define PARTITION_LINUX_LVM_GUID \
+-	EFI_GUID( 0xe6d6d379, 0xf507, 0x44c2, \
+-		0xa2, 0x3c, 0x23, 0x8f, 0x2a, 0x3d, 0xf9, 0x28)
+-
+-/* linux/include/efi.h */
+-typedef unsigned short efi_char16_t;
+-
+-typedef struct {
+-	unsigned char b[16];
+-} efi_guid_t;
+-
+-/* based on linux/include/genhd.h */
+-struct partition {
+-	unsigned char boot_ind;		/* 0x80 - active */
+-	unsigned char head;		/* starting head */
+-	unsigned char sector;		/* starting sector */
+-	unsigned char cyl;		/* starting cylinder */
+-	unsigned char sys_ind;		/* What partition type */
+-	unsigned char end_head;		/* end head */
+-	unsigned char end_sector;	/* end sector */
+-	unsigned char end_cyl;		/* end cylinder */
+-	unsigned char start_sect[4];	/* starting sector counting from 0 */
+-	unsigned char nr_sects[4];	/* nr of sectors in partition */
+-} __attribute__ ((packed));
+-
+-/* based on linux/fs/partitions/efi.h */
+-typedef struct _gpt_header {
+-	unsigned char signature[8];
+-	unsigned char revision[4];
+-	unsigned char header_size[4];
+-	unsigned char header_crc32[4];
+-	unsigned char reserved1[4];
+-	unsigned char my_lba[8];
+-	unsigned char alternate_lba[8];
+-	unsigned char first_usable_lba[8];
+-	unsigned char last_usable_lba[8];
+-	efi_guid_t disk_guid;
+-	unsigned char partition_entry_lba[8];
+-	unsigned char num_partition_entries[4];
+-	unsigned char sizeof_partition_entry[4];
+-	unsigned char partition_entry_array_crc32[4];
+-	unsigned char reserved2[GPT_BLOCK_SIZE - 92];
+-} __attribute__ ((packed)) gpt_header;
+-
+-typedef struct _gpt_entry_attributes {
+-	unsigned long long required_to_function:1;
+-	unsigned long long reserved:47;
+-	unsigned long long type_guid_specific:16;
+-} __attribute__ ((packed)) gpt_entry_attributes;
+-
+-#define PARTNAME_SZ	(72 / sizeof(efi_char16_t))
+-typedef struct _gpt_entry {
+-	efi_guid_t partition_type_guid;
+-	efi_guid_t unique_partition_guid;
+-	unsigned char starting_lba[8];
+-	unsigned char ending_lba[8];
+-	gpt_entry_attributes attributes;
+-	efi_char16_t partition_name[PARTNAME_SZ];
+-}
+-__attribute__ ((packed)) gpt_entry;
+-
+-typedef struct _legacy_mbr {
+-	unsigned char boot_code[440];
+-	unsigned char unique_mbr_signature[4];
+-	unsigned char unknown[2];
+-	struct partition partition_record[4];
+-	unsigned char signature[2];
+-} __attribute__ ((packed)) legacy_mbr;
+-
+-#endif	/* _DISK_PART_EFI_H */
+diff --git a/drivers/i2c/iproc_i2c.c b/drivers/i2c/iproc_i2c.c
+index 879f9e6..e894c2f 100644
+--- a/drivers/i2c/iproc_i2c.c
++++ b/drivers/i2c/iproc_i2c.c
+@@ -36,31 +36,91 @@
+ #define debug(fmt,args...)
+ #endif /* I2C_DEBUG */
+ 
+-static smb_clk_freq_t  smb_clk_speed;
+ static int  i2c_init_done = 0;
+ 
+-#if (defined(CONFIG_NS_PLUS) || defined(CONFIG_HELIX4)) 
+-#define SHADOW_CPY_BUFFER 0x70000000
+-#define IPROC_SMBUS_BASE_ADDR   (0x18038000)
+-//#define IPROC_SMBUS_BASE_ADDR   (0x1803B000)
++#if (defined(CONFIG_NS_PLUS) || defined(CONFIG_HELIX4))
++static u32 SHADOW_CPY_BUFFER = 0x70000000;
++static u32 IPROC_SMBUS_BASE_ADDR = 0x18038000;
+ #else
+-#define SHADOW_CPY_BUFFER 0x89000000
+-#define IPROC_SMBUS_BASE_ADDR   (0x18009000)
++static u32 SHADOW_CPY_BUFFER = 0x89000000;
++static u32 IPROC_SMBUS_BASE_ADDR = 0x18009000;
++#endif
++
++#ifdef CONFIG_I2C_MULTI_BUS
++static unsigned int current_bus;
++
++/**
++ * i2c_set_bus_num - change active I2C bus
++ *	@bus: bus index, zero based
++ *	@returns: 0 on success, non-0 on failure
++ */
++int i2c_set_bus_num(unsigned int bus)
++{
++	if ((bus < 0) || (bus >= CONFIG_SYS_MAX_I2C_BUS)) {
++		printf("Bad bus: %d\n", bus);
++		return -1;
++	}
++
++	switch (bus) {
++        case 0:
++#if defined(CONFIG_HELIX4)
++                IPROC_SMBUS_BASE_ADDR = 0x18038000;
++#else
++                IPROC_SMBUS_BASE_ADDR = 0x18008000;
++#endif
++                SHADOW_CPY_BUFFER = 0x70000000;
++                break;
++        case 1:
++#if defined(CONFIG_HELIX4)
++                IPROC_SMBUS_BASE_ADDR = 0x1803B000;
++#else
++		IPROC_SMBUS_BASE_ADDR = 0x1800B000;
++#endif
++                SHADOW_CPY_BUFFER  = 0x70100000;
++                break;
++#if defined (CONFIG_HELIX4)
++        case 2:
++                IPROC_SMBUS_BASE_ADDR = 0x48000000;
++                SHADOW_CPY_BUFFER = 0x70200000;
++#else
++                return -1;
++#endif
++                break;
++
++    default:
++		return -1;
++	}
++	current_bus = bus;
++	return 0;
++}
++/**
++ * i2c_get_bus_num - returns index of active I2C bus
++ */
++unsigned int i2c_get_bus_num(void)
++{
++	return current_bus;
++}
++
+ #endif
+ 
+ /* Function to read a value from specified register. */
+ static unsigned int iproc_i2c_reg_read(unsigned long reg_addr)
+ {
+-    return( __raw_readl((void *)(IPROC_SMBUS_BASE_ADDR + reg_addr)) );
++    unsigned int val;
++    val = __raw_readl((void *)(IPROC_SMBUS_BASE_ADDR + reg_addr));
++    debug("Rd: addr:0x%x val:0x%x\n", (void *)(IPROC_SMBUS_BASE_ADDR + reg_addr), val);
++    return val;
+ }
+ 
+ /* Function to write a value ('val') in to a specified register. */
+ static int iproc_i2c_reg_write(unsigned long reg_addr, unsigned int val)
+ {
++    debug("Wr: addr:0x%x val:0x%x\n", (void *)(IPROC_SMBUS_BASE_ADDR + reg_addr), val);
+     __raw_writel(val, (void *)(IPROC_SMBUS_BASE_ADDR + reg_addr));
+     return (0);
+ }
+ 
++#ifdef IPROC_I2C_DBG
+ static int iproc_dump_i2c_regs(void)
+ {
+     unsigned int regval;
+@@ -68,6 +128,8 @@ static int iproc_dump_i2c_regs(void)
+     debug("\n----------------------------------------------\n");
+     debug("%s: Dumping SMBus registers... \n", __func__);
+ 
++    debug("IPROC_SMBUS_BASE_ADDR=0x%08X\n", IPROC_SMBUS_BASE_ADDR);
++
+     regval = iproc_i2c_reg_read(CCB_SMB_CFG_REG);
+     debug("CCB_SMB_CFG_REG=0x%08X\n", regval);
+ 
+@@ -113,6 +175,7 @@ static int iproc_dump_i2c_regs(void)
+     debug("----------------------------------------------\n\n");
+     return(0);
+ }
++#endif
+ 
+ /*
+  * Function to ensure that the previous transaction was completed before
+@@ -142,7 +205,7 @@ static int iproc_i2c_startbusy_wait(void)
+                  (i < IPROC_SMB_MAX_RETRIES));
+ 
+         if (i >= IPROC_SMB_MAX_RETRIES) {
+-            printf("%s: START_BUSY bit didn't clear, exiting\n",
++            debug("%s: START_BUSY bit didn't clear, exiting\n",
+                    __func__);;
+             return -ETIMEDOUT;
+         }
+@@ -305,7 +368,7 @@ static int iproc_i2c_data_recv(unsigned short addr,
+     rc = iproc_i2c_startbusy_wait();
+ 
+     if (rc < 0) {
+-        printf("%s: Receive: Bus is busy, exiting\n", __func__);;
++        debug("%s: Receive: Bus is busy, exiting\n", __func__);;
+         return rc;
+     }
+ 
+@@ -338,7 +401,7 @@ static int iproc_i2c_data_recv(unsigned short addr,
+ 
+         if (regval != MSTR_STS_XACT_SUCCESS) {
+             /* We can flush Tx FIFO here */
+-            printf("%s: Error in transaction %d, exiting",
++            debug("%s: Error in transaction %d, exiting",
+                    __func__, regval);
+            return -EREMOTEIO;
+         }
+@@ -408,7 +471,7 @@ static int iproc_i2c_set_clk_freq(smb_clk_freq_t freq)
+     return(0);
+ }
+ 
+-void i2c_init (int speed, int slaveadd)
++static void iproc_i2c_init (int speed, int slaveadd)
+ {
+     unsigned int regval;
+ 
+@@ -432,14 +495,17 @@ void i2c_init (int speed, int slaveadd)
+     udelay(100);
+ 
+     /* Set default clock frequency */
+-    iproc_i2c_set_clk_freq(I2C_SPEED_100KHz);
+-
++    if (speed == 0) {
++        iproc_i2c_set_clk_freq(I2C_SPEED_100KHz);
++    } else {
++        iproc_i2c_set_clk_freq(I2C_SPEED_400KHz);
++    }
+     /* Disable intrs */
+     regval = 0x0;
+     iproc_i2c_reg_write(CCB_SMB_EVTEN_REG, regval);
+ 
+     /* Clear intrs (W1TC) */
+-    regval = iproc_i2c_reg_read(CCB_SMB_EVTSTS_REG);    
++    regval = iproc_i2c_reg_read(CCB_SMB_EVTSTS_REG);
+     iproc_i2c_reg_write(CCB_SMB_EVTSTS_REG, regval);
+ 
+     i2c_init_done = 1;
+@@ -450,34 +516,54 @@ void i2c_init (int speed, int slaveadd)
+     debug("%s: Init successful\n", __func__);
+ #endif /* IPROC_I2C_DBG */
+ 
+-    return(0);
++    return;
+ }
+ 
+-int i2c_probe (uchar chip)
++void i2c_init (int speed, int slaveadd)
+ {
++#ifdef CONFIG_I2C_MULTI_BUS
++    i2c_set_bus_num(0);
++    iproc_i2c_init(speed, slaveadd);
++    i2c_set_bus_num(1);
++    iproc_i2c_init(speed, slaveadd);
++#if defined(CONFIG_HELIX4)
++    i2c_set_bus_num(0);
++    iproc_i2c_init(speed, slaveadd);
++    i2c_set_bus_num(1);
++    iproc_i2c_init(speed, slaveadd);
++#endif
++#else
++    iproc_i2c_init(speed, slaveadd);
++#endif
++}
+ 
+-#ifdef IPROC_I2C_DBG
+-    debug("\n%s: Entering probe\n", __func__);
+-#endif /* IPROC_I2C_DBG */
+-
+-    /* Init internal regs, disable intrs (and then clear intrs), set fifo
+-     * thresholds, etc.
+-     */
+-    if(! i2c_init_done)
+-        i2c_init(0, 0);
++static int i2c_receive_byte (u8 devaddr, u8 *value)
++{
++    int rc;
++    struct iproc_xact_info info;
++    unsigned int num_bytes_read = 0;
+ 
+-#ifdef IPROC_I2C_DBG
+-    iproc_dump_i2c_regs();
++    devaddr <<= 1;
+ 
+-    debug("%s: probe successful\n", __func__);
+-#endif /* IPROC_I2C_DBG */
++    info.cmd_valid = 0;
++    info.data = value;
++    info.size = 1;
++    info.flags = 0;
++    info.smb_proto = SMBUS_PROT_RECV_BYTE;
+ 
+-    return 0;
+-}
++    /* Refer to i2c_smbus_read_byte for params passed. */
++    rc = iproc_i2c_data_recv(devaddr, &info, &num_bytes_read);
+ 
++    if (rc < 0) {
++        debug("%s: %s error accessing device 0x%X",
++                    __func__, "Read", devaddr);
++        return -EREMOTEIO;
++    }
+ 
++    return (0);
++}
+ 
+-static int i2c_read_byte (u8 devaddr, u8 regoffset, u8 * value)
++static int i2c_read_byte (u8 devaddr, u16 regoffset, u8 * value)
+ {
+     int rc;
+     struct iproc_xact_info info;
+@@ -486,7 +572,7 @@ static int i2c_read_byte (u8 devaddr, u8 regoffset, u8 * value)
+     devaddr <<= 1;
+ 
+     info.cmd_valid = 1;
+-    info.command = (unsigned char)regoffset;
++    info.command = (unsigned short)regoffset;
+     info.data = value;
+     info.size = 1;
+     info.flags = 0;
+@@ -496,7 +582,7 @@ static int i2c_read_byte (u8 devaddr, u8 regoffset, u8 * value)
+     rc = iproc_i2c_data_recv(devaddr, &info, &num_bytes_read);
+ 
+     if (rc < 0) {
+-        printf("%s: %s error accessing device 0x%X", 
++        debug("%s: %s error accessing device 0x%X", 
+                     __func__, "Read", devaddr);
+         return -EREMOTEIO;
+     }
+@@ -504,29 +590,74 @@ static int i2c_read_byte (u8 devaddr, u8 regoffset, u8 * value)
+     return (0);
+ }
+ 
+-int i2c_read (uchar chip, uint addr, int alen, uchar * buffer, int len)
++int i2c_probe (uchar chip)
+ {
+-	int i;
++    u32 slave_addr;
++    u32 curr_bus;
++    int rc;
++    u8  buffer[1];
+ 
+-	if (alen > 1) {
+-		printf ("I2C read: addr len %d not supported\n", alen);
+-		return 1;
+-	}
++    slave_addr = chip;
++#ifdef IPROC_I2C_DBG
++    debug("\n%s: Entering probe\n", __func__);
++#endif /* IPROC_I2C_DBG */
+ 
+-	if (addr + len > 256) {
+-		printf ("I2C read: address out of range\n");
+-		return 1;
+-	}
++    /* Init internal regs, disable intrs (and then clear intrs), set fifo
++     * thresholds, etc.
++     */
++    if(! i2c_init_done)
++    {
++        curr_bus = i2c_get_bus_num();
++#ifdef CONFIG_I2C_MULTI_BUS
++        i2c_set_bus_num(0);
++        iproc_i2c_init(CONFIG_SYS_I2C_SPEED, 0);
++        i2c_set_bus_num(1);
++        iproc_i2c_init(CONFIG_SYS_I2C_SPEED, 0);
++#if defined(CONFIG_HELIX4)
++        i2c_set_bus_num(2);
++        iproc_i2c_init(CONFIG_SYS_I2C_SPEED, 0);
++#endif
++#else
++        iproc_i2c_init(CONFIG_SYS_I2C_SPEED, 0);
++#endif
++        i2c_set_bus_num(curr_bus);
++    }
++
++    rc = i2c_receive_byte(slave_addr, &buffer[0]);
++    if (rc) {
++        /* receive byte didnt work, let's try read byte */
++        rc = i2c_read_byte(slave_addr, 0x0, &buffer[0]);
++    }
++    if (!rc) {
++        debug("%s: probe successful for dev %d\n", __func__, slave_addr);
++    } else {
++        return rc;
++    }
++
++#ifdef IPROC_I2C_DBG
++    iproc_dump_i2c_regs();
++
++    debug("%s: probe successful\n", __func__);
++#endif /* IPROC_I2C_DBG */
++
++    return 0;
++}
++
++
++
++int i2c_read (uchar chip, uint addr, int alen, uchar * buffer, int len)
++{
++	int i;
+ 
+ 	for (i = 0; i < len; i++) {
+ 		if (i2c_read_byte (chip, addr + i, &buffer[i])) {
+-			printf ("I2C read: I/O error\n");
++			debug ("I2C read: I/O error\n");
+ 			i2c_init (CONFIG_SYS_I2C_SPEED, CONFIG_SYS_I2C_SLAVE);
+ 			return 1;
+ 		}
+ 	}
+ 
+-    memcpy((uchar*)SHADOW_CPY_BUFFER, buffer, len);
++    //memcpy((uchar*)SHADOW_CPY_BUFFER, buffer, len);
+ 
+ 	return 0;
+ }
+@@ -534,16 +665,15 @@ int i2c_read (uchar chip, uint addr, int alen, uchar * buffer, int len)
+ 
+ 
+ 
+-static int i2c_write_byte (u8 devaddr, u8 regoffset, u8 value)
++static int i2c_write_byte (u8 devaddr, u16 regoffset, u8 value)
+ {
+     int rc;
+     struct iproc_xact_info info;
+-    unsigned int num_bytes_write = 0;
+ 
+     devaddr <<= 1;
+ 
+     info.cmd_valid = 1;
+-    info.command = (unsigned char)regoffset;
++    info.command = (unsigned short)regoffset;
+     info.data = &value; 
+     info.size = 1;
+     info.flags = 0;
+@@ -565,19 +695,9 @@ int i2c_write (uchar chip, uint addr, int alen, uchar * buffer, int len)
+ {
+ 	int i;
+ 
+-	if (alen > 1) {
+-		printf ("I2C read: addr len %d not supported\n", alen);
+-		return 1;
+-	}
+-
+-	if (addr + len > 256) {
+-		printf ("I2C read: address out of range\n");
+-		return 1;
+-	}
+-
+ 	for (i = 0; i < len; i++) {
+ 		if (i2c_write_byte (chip, addr + i, buffer[i])) {
+-			printf ("I2C read: I/O error\n");
++			printf ("I2C write: I/O error\n");
+ 			i2c_init (CONFIG_SYS_I2C_SPEED, CONFIG_SYS_I2C_SLAVE);
+ 			return 1;
+ 		}
+@@ -585,3 +705,59 @@ int i2c_write (uchar chip, uint addr, int alen, uchar * buffer, int len)
+ 
+ 	return 0;
+ }
++
++/**
++ * i2c_set_bus_speed - set i2c bus speed
++ *      @speed: bus speed (in HZ)
++ * This function returns invalid or 0
++ */
++
++int i2c_set_bus_speed(unsigned int speed)
++{
++
++    switch (speed) {
++
++        case 100000:
++	    iproc_i2c_set_clk_freq(I2C_SPEED_100KHz);
++            break;
++
++        case 400000:
++            iproc_i2c_set_clk_freq(I2C_SPEED_400KHz);
++            break;
++
++        default:
++            return -EINVAL;
++            break;
++    }
++    return 0;
++}
++
++/**
++ * i2c_get_bus_speed - get i2c bus speed
++ *
++ * This function returns the speed of operation in Hz
++ */
++unsigned int i2c_get_bus_speed(void)
++{
++     unsigned int regval;
++     unsigned int val;
++
++     regval = iproc_i2c_reg_read(CCB_SMB_TIMGCFG_REG);
++     val = GETREGFLDVAL(regval, CCB_SMB_TIMGCFG_MODE400_MASK,
++                                 CCB_SMB_TIMGCFG_MODE400_SHIFT);
++     switch (val) {
++        case I2C_SPEED_100KHz:
++            return 100000;
++            break;
++
++        case I2C_SPEED_400KHz:
++            return 400000;
++            break;
++
++        default:
++            return 0;
++            break;
++     }
++     return 0;
++}
++
+diff --git a/drivers/mtd/nand/nand_spl_simple.c b/drivers/mtd/nand/nand_spl_simple.c
+index 9ecda66..1ff5220 100644
+--- a/drivers/mtd/nand/nand_spl_simple.c
++++ b/drivers/mtd/nand/nand_spl_simple.c
+@@ -298,7 +298,11 @@ void nand_init(void)
+        printf("NAND scan failed\n");
+        return;
+     }
+-    printf("%lu MiB\n", ((int)mtd.size) / (1024 * 1024));
++#ifdef CONFIG_IPROC_SPL
++#ifndef CONFIG_SPL_BUILD
++    printf("%lu MiB\n", (mtd.size) / (1024 * 1024));
++#endif
++#endif
+ #endif
+  
+ #ifdef CONFIG_SPL_NAND_SOFTECC
+diff --git a/drivers/net/bcmiproc_eth.c b/drivers/net/bcmiproc_eth.c
+index 04158bb..b05ced0 100755
+--- a/drivers/net/bcmiproc_eth.c
++++ b/drivers/net/bcmiproc_eth.c
+@@ -25,7 +25,7 @@
+ #include <asm/arch/ethHw.h>
+ #include <asm/arch/ethHw_dma.h>
+ 
+-#define BCMIPROC_ETH_DEV_NAME          "bcmiproc_eth"
++#define BCMIPROC_ETH_DEV_NAME          "eth"
+ 
+ #define BCM_NET_MODULE_DESCRIPTION    "Broadcom BCM IPROC Ethernet driver"
+ #define BCM_NET_MODULE_VERSION        "0.1"
+@@ -180,7 +180,9 @@ bcmiproc_eth_register(u8 dev_num)
+ 	memset(dev, 0, sizeof(*dev));
+ 	sprintf(dev->name, "%s-%hu", BCMIPROC_ETH_DEV_NAME, dev_num);
+ 
+-	printf(banner);
++#ifdef BCMIPROC_ETH_DEBUG
++    printf(banner);
++#endif
+ 
+ 	/* Initialization */
+ 	ET_TRACE(("Ethernet initialization...\n"));
+diff --git a/drivers/net/bcmiproc_ethHw.c b/drivers/net/bcmiproc_ethHw.c
+index 1dc6dc6..e159e4a 100755
+--- a/drivers/net/bcmiproc_ethHw.c
++++ b/drivers/net/bcmiproc_ethHw.c
+@@ -352,7 +352,9 @@ ethHw_Init(void)
+ 			ET_ERROR(("ERROR: invalid GMAC specified\n"));
+ 	}
+ 
+-	printf ("Using GMAC%d (0x%x)\n", eth_data->mac, (unsigned int)eth_data->regs);
++#ifdef BCMIPROC_ETH_DEBUG
++    printf ("Using GMAC%d (0x%x)\n", eth_data->mac, (unsigned int)eth_data->regs);
++#endif
+ 
+ #ifdef CONFIG_IPROC_EMULATION
+ 	/* load options */
+@@ -579,7 +581,9 @@ ethHw_chipAttach(bcm_eth_t *eth_data)
+ 
+ 	/* reset phy: reset it once now */
+ 	chipid = iproc_get_chipid();
+-	printf("et%d: %s: Chip ID: 0x%x; phyaddr: 0x%x\n", eth_data->unit, __FUNCTION__, chipid, eth_data->bcmgmac.phyaddr);
++#ifdef BCMIPROC_ETH_DEBUG
++    printf("et%d: %s: Chip ID: 0x%x; phyaddr: 0x%x\n", eth_data->unit, __FUNCTION__, chipid, eth_data->bcmgmac.phyaddr);
++#endif
+ 
+ #if defined(CONFIG_CYGNUS)
+     /* set switch bypass mode */	
+@@ -2624,16 +2628,22 @@ gmac_serdes_init(bcm_eth_t *eth_data)
+ 	//printf("et%d: %s enter\n", eth_data->unit, __FUNCTION__);
+ 
+ 	sdctl = reg32_read(&regs->serdes_ctl);
+-	printf("et%d: %s read sdctl(0x%x)\n", eth_data->unit, __FUNCTION__, sdctl);
+-	sdstat0 = reg32_read(&regs->serdes_status0);
++#ifdef BCMIPROC_ETH_DEBUG
++    printf("et%d: %s read sdctl(0x%x)\n", eth_data->unit, __FUNCTION__, sdctl);
++#endif
++    sdstat0 = reg32_read(&regs->serdes_status0);
+ 	sdstat1 = reg32_read(&regs->serdes_status1);
++#ifdef BCMIPROC_ETH_DEBUG
+ 	printf("et%d: %s() serdes_status0: 0x%x; serdes_status1: 0x%x\n", eth_data->unit, __FUNCTION__, sdstat0, sdstat1);
++#endif
+ 
+     /* Check is PLL already brought up */
+ 	if (sdstat0 & SS0_TXPLL_LOCK)
+ 	{
++#ifdef BCMIPROC_ETH_DEBUG
+ 		printf("et%d: %s() PLL ready brought up exit\n", eth_data->unit, __FUNCTION__);
+-		return;
++#endif
++        return;
+ 	}
+   
+     /*
+@@ -2652,54 +2662,80 @@ gmac_serdes_init(bcm_eth_t *eth_data)
+ 	sdctl |= (SC_TX1G_FIFO_RST_VAL|SC_FORCE_SPD_STRAP_VAL|SC_REF_TERM_SEL_MASK);
+ #endif /* (defined(CONFIG_HELIX4) || defined(CONFIG_CYGNUS)) */
+ 
++#ifdef BCMIPROC_ETH_DEBUG
+ 	printf("et%d: %s write sdctl(0x%x)\n", eth_data->unit, __FUNCTION__, sdctl);
++#endif
+ 
+ 	reg32_write(&regs->serdes_ctl, sdctl);
+ 
+ 	udelay(1000);
+ 
+ 	sdctl = reg32_read(&regs->serdes_ctl);
++#ifdef BCMIPROC_ETH_DEBUG
+ 	printf("et%d: %s read sdctl(0x%x)\n", eth_data->unit, __FUNCTION__, sdctl);
+-	sdctl |= (SC_IDDQ_MASK|SC_PWR_DOWN_MASK);
++#endif
++    sdctl |= (SC_IDDQ_MASK|SC_PWR_DOWN_MASK);
++#ifdef BCMIPROC_ETH_DEBUG
+ 	printf("et%d: %s write sdctl(0x%x)\n", eth_data->unit, __FUNCTION__, sdctl);
+-	reg32_write(&regs->serdes_ctl, sdctl);
++#endif
++    reg32_write(&regs->serdes_ctl, sdctl);
+ 
+ 	sdctl = reg32_read(&regs->serdes_ctl);
++#ifdef BCMIPROC_ETH_DEBUG
+ 	printf("et%d: %s read sdctl(0x%x)\n", eth_data->unit, __FUNCTION__, sdctl);
+-	sdctl &= ~(SC_IDDQ_MASK|SC_PWR_DOWN_MASK);
++#endif
++    sdctl &= ~(SC_IDDQ_MASK|SC_PWR_DOWN_MASK);
++#ifdef BCMIPROC_ETH_DEBUG
+ 	printf("et%d: %s write sdctl(0x%x)\n", eth_data->unit, __FUNCTION__, sdctl);
+-	reg32_write(&regs->serdes_ctl, sdctl);
++#endif
++    reg32_write(&regs->serdes_ctl, sdctl);
+ 
+     /* Bring hardware out of reset */
+ 	sdctl = reg32_read(&regs->serdes_ctl);
++#ifdef BCMIPROC_ETH_DEBUG
+ 	printf("et%d: %s read sdctl(0x%x)\n", eth_data->unit, __FUNCTION__, sdctl);
+-	sdctl |= (SC_RSTB_HW_MASK);
++#endif
++    sdctl |= (SC_RSTB_HW_MASK);
++#ifdef BCMIPROC_ETH_DEBUG
+ 	printf("et%d: %s write sdctl(0x%x)\n", eth_data->unit, __FUNCTION__, sdctl);
+-	reg32_write(&regs->serdes_ctl, sdctl);
++#endif
++    reg32_write(&regs->serdes_ctl, sdctl);
+ 
+     /* Bring MDIOREGS out of reset */
+ 	sdctl = reg32_read(&regs->serdes_ctl);
++#ifdef BCMIPROC_ETH_DEBUG
+ 	printf("et%d: %s read sdctl(0x%x)\n", eth_data->unit, __FUNCTION__, sdctl);
+-	sdctl |= (SC_RSTB_MDIOREGS_MASK);
++#endif
++    sdctl |= (SC_RSTB_MDIOREGS_MASK);
++#ifdef BCMIPROC_ETH_DEBUG
+ 	printf("et%d: %s write sdctl(0x%x)\n", eth_data->unit, __FUNCTION__, sdctl);
+-	reg32_write(&regs->serdes_ctl, sdctl);
++#endif
++    reg32_write(&regs->serdes_ctl, sdctl);
+ 
+ 	udelay(1000);
+ 
+     /* Bring PLL out of reset */
+ 	sdctl = reg32_read(&regs->serdes_ctl);
++#ifdef BCMIPROC_ETH_DEBUG
+ 	printf("et%d: %s read sdctl(0x%x)\n", eth_data->unit, __FUNCTION__, sdctl);
+-	sdctl |= (SC_RSTB_PLL_MASK);
++#endif
++    sdctl |= (SC_RSTB_PLL_MASK);
++#ifdef BCMIPROC_ETH_DEBUG
+ 	printf("et%d: %s write sdctl(0x%x)\n", eth_data->unit, __FUNCTION__, sdctl);
+-	reg32_write(&regs->serdes_ctl, sdctl);
++#endif
++    reg32_write(&regs->serdes_ctl, sdctl);
+ 
+ 	udelay(1000);
+ 
+ 	sdctl = reg32_read(&regs->serdes_ctl);
++#ifdef BCMIPROC_ETH_DEBUG
+ 	printf("et%d: %s read sdctl(0x%x)\n", eth_data->unit, __FUNCTION__, sdctl);
+-	sdstat0 = reg32_read(&regs->serdes_status0);
++#endif
++    sdstat0 = reg32_read(&regs->serdes_status0);
+ 	sdstat1 = reg32_read(&regs->serdes_status1);
++#ifdef BCMIPROC_ETH_DEBUG
+ 	printf("et%d: %s read sdstat0(0x%x); sdstat1(0x%x)\n", eth_data->unit, __FUNCTION__, sdstat0, sdstat1);
++#endif
+ 
+ #endif
+ 	return;
+diff --git a/drivers/net/bcmiproc_serdes.c b/drivers/net/bcmiproc_serdes.c
+index a76e992..caa9532 100755
+--- a/drivers/net/bcmiproc_serdes.c
++++ b/drivers/net/bcmiproc_serdes.c
+@@ -198,7 +198,9 @@ serdes_reset_core(bcm_eth_t *eth_data, uint phyaddr)
+ 
+ 	/* get serdes id */
+ 	serdes_id2 = serdes_get_id(eth_data, phyaddr, 2);
+-	printf("%s pbyaddr(0x%x) id2(0x%x)\n", __FUNCTION__, phyaddr, serdes_id2);
++#ifdef BCMIPROC_ETH_DEBUG
++    printf("%s pbyaddr(0x%x) id2(0x%x)\n", __FUNCTION__, phyaddr, serdes_id2);
++#endif
+ 
+ 	/* unlock lane */
+ 	data16 = serdes_rd_reg(eth_data, phyaddr, 0x833c);
+diff --git a/drivers/usb/host/ehci-iproc.c b/drivers/usb/host/ehci-iproc.c
+index a7fd7e3..550af55 100644
+--- a/drivers/usb/host/ehci-iproc.c
++++ b/drivers/usb/host/ehci-iproc.c
+@@ -86,16 +86,16 @@ int linux_usbh_init(void)
+ 
+ 	/* enable clock */
+ 	clk_enable = __raw_readl(IPROC_IDM_USB2_IO_CONTROL_DIRECT);
+-	printf("Initial usb2h clock is: %08x\n", clk_enable);
++	/*printf("Initial usb2h clock is: %08x\n", clk_enable);*/
+ 	clk_enable |= 1;
+-	printf("Initial usb2h clock is: %08x\n", clk_enable);
++	/*printf("Initial usb2h clock is: %08x\n", clk_enable);*/
+ 	__raw_writel(clk_enable, IPROC_IDM_USB2_IO_CONTROL_DIRECT);
+ 
+ #if defined(CONFIG_HELIX4)
+ 	/* set USB clock to configured */
+ 	iClk = __raw_readl(IPROC_XGPLL);
+ 	USBClk = __raw_readl(IPROC_USB_PHY_CTRL);
+-	printf("iClk = %08x, USBClk = %08x\n", iClk, USBClk);
++	/*printf("iClk = %08x, USBClk = %08x\n", iClk, USBClk);*/
+ 	if ((iClk & 0xff) == IPROC_CLK_NDIV_40)
+ 	{
+ 		__raw_writel((USBClk & USB_CLK_NDIV_MASK) | USB_CLK_NDIV_40, IPROC_USB_PHY_CTRL);
+@@ -105,7 +105,7 @@ int linux_usbh_init(void)
+ 		__raw_writel((USBClk & USB_CLK_PHY_RESET_MASK) | USB_CLK_NDIV_40, IPROC_USB_PHY_CTRL);
+ 		udelay(10);
+ 		USBClk = __raw_readl(IPROC_USB_PHY_CTRL);
+-		printf("iClk = %08x, USBClk = %08x\n", iClk, USBClk);
++		/*printf("iClk = %08x, USBClk = %08x\n", iClk, USBClk);*/
+ 	}
+ 	else if ((iClk & 0xff) == IPROC_CLK_NDIV_20)
+ 	{
+@@ -116,7 +116,7 @@ int linux_usbh_init(void)
+ 		__raw_writel((USBClk & USB_CLK_PHY_RESET_MASK) | USB_CLK_NDIV_20, IPROC_USB_PHY_CTRL);
+ 		udelay(10);
+ 		USBClk = __raw_readl(IPROC_USB_PHY_CTRL);
+-		printf("iClk = %08x, USBClk = %08x\n", iClk, USBClk);
++		/*printf("iClk = %08x, USBClk = %08x\n", iClk, USBClk);*/
+ 	}
+ #endif
+ 
+@@ -124,13 +124,12 @@ int linux_usbh_init(void)
+ 	__raw_writel(USBClk | (1<<23), IPROC_USB_PHY_CTRL);
+ 	udelay(100);
+ 
+-    printf("\nBring usb2h_out of reset.......\n");
++    printf("Bringing USB2 host out of reset...\n");
+     __raw_writel(0x0, IPROC_IDM_USB2_RESET_CONTROL);
+     udelay(100000);
+     usb2_reset_state = __raw_readl(IPROC_IDM_USB2_RESET_CONTROL);
+-    printf("usb2_reset_state is set and now it is: %08x\n", usb2_reset_state);
+-
+-#if (defined(CONFIG_HELIX4) || defined(CONFIG_KATANA2))
++    /*printf("usb2_reset_state is set and now it is: %08x\n", usb2_reset_state);*/
++#if defined(CONFIG_TARGET_HELIX4_SVK)
+ 	/* supply power for USB device connected to the host */
+ 	usbdgpiopwr = __raw_readl(ChipcommonA_GPIOOut);
+ 	usbdgpiopwr &= SUPPLY_USBD_POWER;
+diff --git a/include/configs/helix4.h b/include/configs/helix4.h
+index 0926a38..3621488 100644
+--- a/include/configs/helix4.h
++++ b/include/configs/helix4.h
+@@ -3,22 +3,55 @@
+ 
+ #include <asm/sizes.h>
+ 
++#define CONFIG_SPL_ETH_SUPPORT
++
++#define CONFIG_SYS_PROMPT	"delta_ag6248c_poe->"
++#define CONFIG_SYS_EEPROM_MAX_NUM_ETH_PORTS	1
++
++#define CONFIG_SYS_EEPROM_LOAD_ENV_MAC
++#define CONFIG_POPULATE_SERIAL_NUMBER
++
++/* ONIE common config */
++#define ONIE_IMAGE_READ_CMD  \
++	"nand read  $loadaddr $onie_start 0x00c00000"
++
++#define CONFIG_CMD_LOADB
++#define CONFIG_YAFFS2
++
++#include "common_config.h"
++#undef CONFIG_CMD_JFFS2
++#undef CONFIG_OF_BOARD_SETUP
++#undef CONFIG_CMD_IRQ
++#undef CONFIG_CMD_PCI
++/*#undef CONFIG_OF_LIBFDT */
++#undef CONFIG_ENV_WRITE_DEFAULT_IF_CRC_BAD
++
++
++#define CONFIG_RBTREE
++#define CONFIG_LZO
++#define CONFIG_MTD_DEVICE
++#define CONFIG_MTD_PARTITIONS
++#define CONFIG_CMD_UBI
++#define CONFIG_CMD_UBIFS
++
+ #define CONFIG_CMD_USB
+ #ifdef CONFIG_CMD_USB
+ #define CONFIG_USB_EHCI
+ #define CONFIG_USB_EHCI_IPROC
+ #define CONFIG_USB_STORAGE
+ #define CONFIG_CMD_FAT
+-#define CONFIG_DOS_PARTITION
++/* #define CONFIG_DOS_PARTITION */
+ #define CONFIG_LEGACY_USB_INIT_SEQ
+ #endif
+ 
+ /* PCIE */
++#if 0
+ #define CONFIG_CMD_PCI
+ #define CONFIG_CMD_PCI_ENUM
+ #define CONFIG_PCI
+ #define CONFIG_PCI_SCAN_SHOW
+ #define CONFIG_IPROC_PCIE
++#endif
+ 
+ #define CONFIG_BOARD_LATE_INIT
+ #define CONFIG_BOARD_EARLY_INIT_F (1)
+@@ -88,6 +121,10 @@ When DEBUG is enabled, need to disable both CACHE to make u-boot running
+ #define DEBUG
+ 
+ */
++
++#define CONFIG_SYS_ICACHE_OFF
++#define CONFIG_SYS_DCACHE_OFF
++
+ #define CONFIG_IPROC_MMU	(1)
+ #define CONFIG_L2_OFF				/* Disable L2 cache */
+ #define CONFIG_SYS_ARM_CACHE_WRITETHROUGH (1)
+@@ -95,13 +132,13 @@ When DEBUG is enabled, need to disable both CACHE to make u-boot running
+ #define CONFIG_MISC_INIT_R			/* Call board's misc_init_r function */
+ 
+ /* Interrupt configuration */
+-#define CONFIG_USE_IRQ          1	/* we need IRQ stuff for timer	*/
++/*#define CONFIG_USE_IRQ          1	*//* we need IRQ stuff for timer	*/
+ 
+ /* Memory Info */
+ #if (defined(CONFIG_L2C_AS_RAM ) && defined(CONFIG_NO_CODE_RELOC))
+ #define CONFIG_SYS_MALLOC_LEN 			0x8000  	/* see armv7/start.S. */
+ #else
+-#define CONFIG_SYS_MALLOC_LEN 			0x40000  	/* see armv7/start.S. */
++#define CONFIG_SYS_MALLOC_LEN 			0x1000000  	/* see armv7/start.S. */
+ #endif
+ #define CONFIG_STACKSIZE				(0x10000) //64K
+ #define CONFIG_STACKSIZE_IRQ			(4096)
+@@ -134,7 +171,10 @@ When DEBUG is enabled, need to disable both CACHE to make u-boot running
+ #define IPROC_APB_CLK		(125000000)  /* 125 MHz */
+ 
+ #define CONFIG_ENV_OVERWRITE	/* Allow serial# and ethernet mac address to be overwritten in nv storage */
+-#define CONFIG_ENV_SIZE			0x10000 /* 0xA0000-0xAFFFF */
++#if defined(CONFIG_ENV_SIZE) && (CONFIG_ENV_SIZE < 0x10000)
++#undef CONFIG_ENV_SIZE
++#define CONFIG_ENV_SIZE			0x10000 
++#endif
+ 
+ /* NO flash */
+ #define CONFIG_SYS_NO_FLASH		/* Not using NAND/NOR unmanaged flash */
+@@ -148,9 +188,18 @@ When DEBUG is enabled, need to disable both CACHE to make u-boot running
+ /*#define CONFIG_BCM5301X_DMA */
+ 
+ /* General U-Boot configuration */
++#ifndef CONFIG_SYS_CBSIZE
+ #define CONFIG_SYS_CBSIZE			1024	/* Console buffer size */
++#endif
++
++#ifndef CONFIG_SYS_PBSIZE
+ #define CONFIG_SYS_PBSIZE			(CONFIG_SYS_CBSIZE +	sizeof(CONFIG_SYS_PROMPT) + 16) /* Printbuffer size */
++#endif
++
++#ifndef CONFIG_SYS_MAXARGS
+ #define CONFIG_SYS_MAXARGS			64
++#endif
++
+ #define CONFIG_SYS_BARGSIZE		CONFIG_SYS_CBSIZE
+ 
+ #define CONFIG_VERSION_VARIABLE	/* Enabled UBOOT build date/time id string */
+@@ -174,15 +223,14 @@ When DEBUG is enabled, need to disable both CACHE to make u-boot running
+ #undef CONFIG_GENERIC_MMC
+ /*#define CONFIG_CMD_MISC*/
+ 
+-#define CONFIG_ETHADDR		00:90:4c:06:a5:72
++
++/*#define CONFIG_ETHADDR		00:90:4c:06:a5:72 */
+ #define CONFIG_NETMASK		255.255.255.0
+ #define CONFIG_IPADDR		192.168.0.1
+ #define CONFIG_GATEWAYIP	192.168.0.1
+ #define CONFIG_SERVERIP		192.168.0.10
+ 
+-#define CONFIG_GMAC_NUM		0 
+-
+-#define CONFIG_SYS_HZ       1000*1000
++#define CONFIG_GMAC_NUM		0
+ 
+ /* Enable generic u-boot SPI flash drivers and commands */
+ #define CONFIG_CMD_SF
+@@ -211,8 +259,8 @@ When DEBUG is enabled, need to disable both CACHE to make u-boot running
+ #undef CONFIG_ENV_IS_NOWHERE
+ #ifdef CONFIG_NAND_IPROC_BOOT
+ #define CONFIG_ENV_IS_IN_NAND                   1
+-#define CONFIG_ENV_OFFSET                       0x200000
+-#define CONFIG_ENV_RANGE                        0x200000
++#define CONFIG_ENV_OFFSET                       0x300000
++#define CONFIG_ENV_RANGE                        0x100000
+ #else
+ #ifdef CONFIG_SPI_FLASH
+ #define CONFIG_ENV_IS_IN_SPI_FLASH              1
+@@ -221,10 +269,18 @@ When DEBUG is enabled, need to disable both CACHE to make u-boot running
+ #define CONFIG_ENV_SPI_MODE                     SPI_MODE_3
+ #define CONFIG_ENV_SPI_BUS                      CONFIG_IPROC_QSPI_BUS
+ #define CONFIG_ENV_SPI_CS                       CONFIG_IPROC_QSPI_CS
+-#define CONFIG_ENV_SECT_SIZE                    0x10000     /* 64KB */
++#define CONFIG_ENV_SECT_SIZE                    0x100000     /* 1MB */
+ #endif /* CONFIG_SPI_FLASH */
+ #endif /* CONFIG_NAND_BOOT */
+ 
++
++/* I2C */
++#define CONFIG_CMD_I2C
++#define CONFIG_IPROC_I2C
++#define CONFIG_SYS_I2C_SPEED    0       /* Default on 100KHz */
++#define CONFIG_SYS_I2C_SLAVE    0xff    /* No slave address */
++#define CONFIG_I2C_MULTI_BUS
++
+ /* Environment variables for NAND flash */
+ #define CONFIG_CMD_NAND 
+ #define CONFIG_IPROC_NAND 
+@@ -243,7 +299,7 @@ When DEBUG is enabled, need to disable both CACHE to make u-boot running
+ /* Offset of spi flash to save Shmoo values */
+ #define CONFIG_SHMOO_REUSE_QSPI_OFFSET          0x000E0000
+ /* Offset of NAND flash to save Shmoo values */
+-#define CONFIG_SHMOO_REUSE_NAND_OFFSET          0x00400000
++#define CONFIG_SHMOO_REUSE_NAND_OFFSET          0x00100000
+ /* Range for the partition to support NAND bad blocks replacement */
+ #define CONFIG_SHMOO_REUSE_NAND_RANGE           0x00200000
+ /* Delay to wait for the magic character to force Shmoo; 0 to disable delay */
+@@ -254,4 +310,47 @@ When DEBUG is enabled, need to disable both CACHE to make u-boot running
+ #define CONFIG_SHMOO_REUSE_MEMTEST_START        IPROC_DDR_MEM_BASE2
+ #endif /* CONFIG_RUN_DDR_SHMOO2 */
+ 
++#ifdef CONFIG_VERSION_VARIABLE
++       #define VER_VARIABLE "ver=" U_BOOT_VERSION " (" U_BOOT_DATE " - " U_BOOT_TIME ")" CONFIG_IDENT_STRING
++#else
++       #define VER_VARIABLE "\0"
++#endif
++
++/*
++** Platform environment variables needed by the common env
++** infrastructure.
++**
++*/
++
++#define CONFIG_CMD_SYS_EEPROM
++#define CONFIG_SYS_EEPROM_MAX_SIZE	0x100000 /* 1 block size */
++
++#define CONFIG_SYS_EEPROM_USE_NAND_FLASH_IO
++#define CONFIG_SYS_EEPROM_NAND_FLASH_ADDR	0xfb600000
++#define CONFIG_SYS_EEPROM_NAND_FLASH_SIZE	CONFIG_SYS_EEPROM_MAX_SIZE
++#define CONFIG_SYS_EEPROM_NAND_FLASH_ID		0
++
++#define CONFIG_PLATFORM_ENV    \
++	"consoledev=ttyS0\0"    \
++	"initrd_high=0x80000000\0" \
++	"fpboot=setenv bootargs console=${consoledev},${baudrate} maxcpus=2 mem=1024M root=/dev/ram ${mtdparts} ubi.mtd=4 ethaddr=$ethaddr quiet\0" \
++	"ubifscfg=ubi part nand0,4 0x0; ubifsmount fs\0" \
++	"mfg=mfg\0"  \
++	"onie_start=onie\0"       \
++	"onie_sz.b=0x00c00000\0" \
++	"mfgdiags=run fpboot ; nand read ${loadaddr} diags ; bootm ${loadaddr}\0" \
++	"mfgdiags_recovery=nand read ${loadaddr} diags2 ; nand erase.part diags ; nand write ${loadaddr} diags\0" \
++	"onie_recovery=nand read ${loadaddr} onie2 ; nand erase.part onie ; nand write ${loadaddr} onie\0" \
++\
++	    "mtdparts=mtdparts=nand_iproc.0:1m(uboot),2m(shmoo),1m(nenv),12m(onie),3992m(open),12m(onie2),2m(vpd),6m(sys_eeprom),16m(diags),16m(diags2),32m(diags_fs)\0"  \
++	    "mtdids=nand0=nand_iproc.0\0"  \
++	"platformargs=mtdparts=nand_iproc.0:1m(uboot),2m(shmoo),1m(nenv),12m(onie),3992m(open),12m(onie2),2m(vpd),6m(sys_eeprom),16m(diags),16m(diags2),32m(diags_fs)  maxcpus=2 mem=1024M\0"
++	
++
++#define        CONFIG_EXTRA_ENV_SETTINGS       \
++       CONFIG_PLATFORM_ENV             \
++       CONFIG_ONIE_COMMON_UBOOT_ENV  \
++	VER_VARIABLE
++
++
+ #endif /* __HELIX4_H */
+diff --git a/include/configs/iproc_common_configs.h b/include/configs/iproc_common_configs.h
+index 1e9dca8..844440d 100644
+--- a/include/configs/iproc_common_configs.h
++++ b/include/configs/iproc_common_configs.h
+@@ -5,50 +5,18 @@
+ #define CONFIG_SYS_NS16550
+ #define CONFIG_SYS_NS16550_SERIAL
+ #define CONFIG_CONS_INDEX					1
+-#if defined(CONFIG_HURRICANE2) && !defined(CONFIG_HURRICANE2_EMULATION)
+-#define CONFIG_SYS_NS16550_COM1			(0x18000400) /* CCA UART 1 */
+-#else
+-#define CONFIG_SYS_NS16550_COM1			(0x18000300) /* CCA UART 0 */
+-#endif
++#define CONFIG_SYS_NS16550_COM1			(0x18000300) /* CCA UART 1 */
+ #define CONFIG_SYS_NS16550_REG_SIZE		(1)	/* no padding */
+ #define CONFIG_SYS_NS16550_CLK			iproc_get_uart_clk(0)
+ #if defined(CONFIG_HURRICANE2_EMULATION)
+ #define CONFIG_BAUDRATE					4800
+ #else
+-#define CONFIG_BAUDRATE					115200
++/*#define CONFIG_BAUDRATE					9600 */
+ #endif
++#ifdef CONFIG_SYS_BAUDRATE_TABLE
++#undef CONFIG_SYS_BAUDRATE_TABLE
+ #define CONFIG_SYS_BAUDRATE_TABLE	{9600, 19200, 38400, 57600, 115200} 
++#endif
+ 
+-#define CONFIG_STANDALONE_LOAD_ADDR 0x61000000
+-
+-#define CONFIG_BOOTFILE         "uImage"
+ #define CONFIG_MACH_TYPE        4735
+-#define CONFIG_BOOTARGS     				"console=ttyS0,115200n8 maxcpus=1 mem=496M"
+-
+-#define CONFIG_BOOTDELAY			3	/* User can hit a key to abort kernel boot and stay in uboot cmdline */
+-#define CONFIG_BOOTCOMMAND 				""	/* UBoot command issued on power up */
+-#define CONFIG_SYS_PROMPT					"u-boot> "  
+-
+-#define CONFIG_CMD_SAVEENV
+-
+-#define CONFIG_INITRD_TAG        1       /*  send initrd params           */
+-#define CONFIG_CMD_CONSOLE
+-#define CONFIG_CMD_NET
+-#define CONFIG_CMD_PING
+-#define CONFIG_CMD_MEMORY
+-#define CONFIG_CMD_RUN
+-#define CONFIG_CMD_MTDPARTS
+-#define CONFIG_MTD_DEVICE
+-#define MTDIDS_DEFAULT      "nand0=nand_iproc.0"
+-#define MTDPARTS_DEFAULT    "mtdparts=mtdparts=nand_iproc.0:1024k(nboot),1024k(nenv),8192k(nsystem),1038336k(ndata)"
+-#define CONFIG_SYS_HUSH_PARSER
+-#define CONFIG_CMD_DHCP
+-#define CONFIG_CMD_BOOT
+-#define CONFIG_CMD_LICENSE
+-#define CONFIG_CMD_ECHO
+-#define CONFIG_CMD_ITEST
+-#define CONFIG_CMD_MISC
+-#define CONFIG_CMD_SOURCE
+-
+-
+ #endif /* _IPROC_COMMON_H_ */
+diff --git a/include/configs/onie_common_config.h b/include/configs/onie_common_config.h
+index c941e2a..e0783e9 100644
+--- a/include/configs/onie_common_config.h
++++ b/include/configs/onie_common_config.h
+@@ -34,6 +34,10 @@
+ /* Store the size of the U-Boot environment in the device tree */
+ #define CONFIG_FDT_ENV_SIZE
+ 
++#ifndef ONIE_IMAGE_READ_CMD
++#define ONIE_IMAGE_READ_CMD \
++	"cp.b $onie_start $loadaddr ${onie_sz.b}"
++#endif
+ /*
+  * onie_bootcmd load command, kicked off by CONFIG_BOOTCOMMAND.
+  *
+@@ -45,7 +49,7 @@
+ 	"onie_bootcmd=echo Loading Open Network Install Environment ...; " \
+ 	  "echo Platform: $onie_platform ; "				\
+ 	  "echo Version : $onie_version ; "				\
+-	  "cp.b $onie_start $loadaddr ${onie_sz.b} && "			\
++	  ONIE_IMAGE_READ_CMD " && "			\
+ 	  "run onie_args && bootm ${loadaddr}\0"
+ 
+ /*
+@@ -57,7 +61,7 @@
+  */
+ #define CONFIG_ONIE_BOOT_ARGS \
+ 	"onie_initargs=setenv bootargs quiet console=$consoledev,$baudrate\0" \
+-	"onie_platformargs=setenv bootargs $bootargs serial_num=${serial#} " \
++	"onie_platformargs=setenv bootargs $bootargs serial_num=${serial#} ${platformargs} " \
+ 	"eth_addr=$ethaddr " \
+ 	"$onie_bootargs $onie_debugargs \0" \
+ 	"onie_args=run onie_initargs onie_platformargs\0"
+diff --git a/include/exports.h b/include/exports.h
+index 63aa4b2..793f6a2 100644
+--- a/include/exports.h
++++ b/include/exports.h
+@@ -24,6 +24,7 @@ int setenv (const char *varname, const char *varvalue);
+ long simple_strtol(const char *cp,char **endp,unsigned int base);
+ int strcmp(const char * cs,const char * ct);
+ int ustrtoul(const char *cp, char **endp, unsigned int base);
++unsigned long long ustrtoull(const char *cp, char **endp, unsigned int base);
+ #if defined(CONFIG_CMD_I2C)
+ int i2c_write (uchar, uint, int , uchar* , int);
+ int i2c_read (uchar, uint, int , uchar* , int);
+diff --git a/include/iproc_i2c.h b/include/iproc_i2c.h
+index 26aee00..3f8ac3d 100644
+--- a/include/iproc_i2c.h
++++ b/include/iproc_i2c.h
+@@ -57,7 +57,7 @@ typedef enum iproc_smb_error_code {
+ 
+ /* Structure used to pass information to read/write functions. */
+ struct iproc_xact_info {
+-    unsigned char command; /* Passed by caller to send SMBus command code */
++    unsigned short command; /* Passed by caller to send SMBus command code */
+     unsigned char *data; /* actual data pased by the caller */
+     unsigned int size; /* Size of data buffer passed */
+     unsigned short flags; /* Sent by caller specifying PEC, 10-bit addresses */
+diff --git a/include/part.h b/include/part.h
+index 27ea283..c58a734 100644
+--- a/include/part.h
++++ b/include/part.h
+@@ -176,10 +176,62 @@ int   test_part_amiga (block_dev_desc_t *dev_desc);
+ #endif
+ 
+ #ifdef CONFIG_EFI_PARTITION
++#include <part_efi.h>
+ /* disk/part_efi.c */
+ int get_partition_info_efi (block_dev_desc_t * dev_desc, int part, disk_partition_t *info);
+ void print_part_efi (block_dev_desc_t *dev_desc);
+ int   test_part_efi (block_dev_desc_t *dev_desc);
++
++/**
++ * write_gpt_table() - Write the GUID Partition Table to disk
++ *
++ * @param dev_desc - block device descriptor
++ * @param gpt_h - pointer to GPT header representation
++ * @param gpt_e - pointer to GPT partition table entries
++ *
++ * @return - zero on success, otherwise error
++ */
++int write_gpt_table(block_dev_desc_t *dev_desc,
++		  gpt_header *gpt_h, gpt_entry *gpt_e);
++
++/**
++ * gpt_fill_pte(): Fill the GPT partition table entry
++ *
++ * @param gpt_h - GPT header representation
++ * @param gpt_e - GPT partition table entries
++ * @param partitions - list of partitions
++ * @param parts - number of partitions
++ *
++ * @return zero on success
++ */
++int gpt_fill_pte(gpt_header *gpt_h, gpt_entry *gpt_e,
++		disk_partition_t *partitions, int parts);
++
++/**
++ * gpt_fill_header(): Fill the GPT header
++ *
++ * @param dev_desc - block device descriptor
++ * @param gpt_h - GPT header representation
++ * @param str_guid - disk guid string representation
++ * @param parts_count - number of partitions
++ *
++ * @return - error on str_guid conversion error
++ */
++int gpt_fill_header(block_dev_desc_t *dev_desc, gpt_header *gpt_h,
++		char *str_guid, int parts_count);
++
++/**
++ * gpt_restore(): Restore GPT partition table
++ *
++ * @param dev_desc - block device descriptor
++ * @param str_disk_guid - disk GUID
++ * @param partitions - list of partitions
++ * @param parts - number of partitions
++ *
++ * @return zero on success
++ */
++int gpt_restore(block_dev_desc_t *dev_desc, char *str_disk_guid,
++		disk_partition_t *partitions, const int parts_count);
+ #endif
+ 
+ #endif /* _PART_H */
+diff --git a/include/part_efi.h b/include/part_efi.h
+new file mode 100644
+index 0000000..6de0a32
+--- /dev/null
++++ b/include/part_efi.h
+@@ -0,0 +1,147 @@
++/*
++ * Copyright (C) 2008 RuggedCom, Inc.
++ * Richard Retanubun <RichardRetanubun@RuggedCom.com>
++ *
++ * See file CREDITS for list of people who contributed to this
++ * project.
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation; either version 2 of
++ * the License, or (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program; if not, write to the Free Software
++ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
++ * MA 02111-1307 USA
++ */
++
++/*
++ * See also linux/fs/partitions/efi.h
++ *
++ * EFI GUID Partition Table
++ * Per Intel EFI Specification v1.02
++ * http://developer.intel.com/technology/efi/efi.htm
++*/
++
++#include <linux/compiler.h>
++
++#ifndef _DISK_PART_EFI_H
++#define _DISK_PART_EFI_H
++
++#define MSDOS_MBR_SIGNATURE 0xAA55
++#define EFI_PMBR_OSTYPE_EFI 0xEF
++#define EFI_PMBR_OSTYPE_EFI_GPT 0xEE
++
++#define GPT_BLOCK_SIZE 512
++#define GPT_HEADER_SIGNATURE 0x5452415020494645ULL
++#define GPT_HEADER_REVISION_V1 0x00010000
++#define GPT_PRIMARY_PARTITION_TABLE_LBA 1ULL
++#define GPT_ENTRY_NAME "gpt"
++#define GPT_ENTRY_NUMBERS		128
++#define GPT_ENTRY_SIZE			128
++
++#define EFI_GUID(a,b,c,d0,d1,d2,d3,d4,d5,d6,d7) \
++	((efi_guid_t) \
++	{{ (a) & 0xff, ((a) >> 8) & 0xff, ((a) >> 16) & 0xff, ((a) >> 24) & 0xff, \
++		(b) & 0xff, ((b) >> 8) & 0xff, \
++		(c) & 0xff, ((c) >> 8) & 0xff, \
++		(d0), (d1), (d2), (d3), (d4), (d5), (d6), (d7) }})
++
++#define PARTITION_SYSTEM_GUID \
++	EFI_GUID( 0xC12A7328, 0xF81F, 0x11d2, \
++		0xBA, 0x4B, 0x00, 0xA0, 0xC9, 0x3E, 0xC9, 0x3B)
++#define LEGACY_MBR_PARTITION_GUID \
++	EFI_GUID( 0x024DEE41, 0x33E7, 0x11d3, \
++		0x9D, 0x69, 0x00, 0x08, 0xC7, 0x81, 0xF3, 0x9F)
++#define PARTITION_MSFT_RESERVED_GUID \
++	EFI_GUID( 0xE3C9E316, 0x0B5C, 0x4DB8, \
++		0x81, 0x7D, 0xF9, 0x2D, 0xF0, 0x02, 0x15, 0xAE)
++#define PARTITION_BASIC_DATA_GUID \
++	EFI_GUID( 0xEBD0A0A2, 0xB9E5, 0x4433, \
++		0x87, 0xC0, 0x68, 0xB6, 0xB7, 0x26, 0x99, 0xC7)
++#define PARTITION_LINUX_RAID_GUID \
++	EFI_GUID( 0xa19d880f, 0x05fc, 0x4d3b, \
++		0xa0, 0x06, 0x74, 0x3f, 0x0f, 0x84, 0x91, 0x1e)
++#define PARTITION_LINUX_SWAP_GUID \
++	EFI_GUID( 0x0657fd6d, 0xa4ab, 0x43c4, \
++		0x84, 0xe5, 0x09, 0x33, 0xc8, 0x4b, 0x4f, 0x4f)
++#define PARTITION_LINUX_LVM_GUID \
++	EFI_GUID( 0xe6d6d379, 0xf507, 0x44c2, \
++		0xa2, 0x3c, 0x23, 0x8f, 0x2a, 0x3d, 0xf9, 0x28)
++
++/* linux/include/efi.h */
++typedef u16 efi_char16_t;
++
++typedef struct {
++	u8 b[16];
++} efi_guid_t;
++
++/* based on linux/include/genhd.h */
++struct partition {
++	u8 boot_ind;		/* 0x80 - active */
++	u8 head;		/* starting head */
++	u8 sector;		/* starting sector */
++	u8 cyl;			/* starting cylinder */
++	u8 sys_ind;		/* What partition type */
++	u8 end_head;		/* end head */
++	u8 end_sector;		/* end sector */
++	u8 end_cyl;		/* end cylinder */
++	__le32 start_sect;	/* starting sector counting from 0 */
++	__le32 nr_sects;	/* nr of sectors in partition */
++} __packed;
++
++/* based on linux/fs/partitions/efi.h */
++typedef struct _gpt_header {
++	__le64 signature;
++	__le32 revision;
++	__le32 header_size;
++	__le32 header_crc32;
++	__le32 reserved1;
++	__le64 my_lba;
++	__le64 alternate_lba;
++	__le64 first_usable_lba;
++	__le64 last_usable_lba;
++	efi_guid_t disk_guid;
++	__le64 partition_entry_lba;
++	__le32 num_partition_entries;
++	__le32 sizeof_partition_entry;
++	__le32 partition_entry_array_crc32;
++	u8 reserved2[GPT_BLOCK_SIZE - 92];
++} __packed gpt_header;
++
++typedef union _gpt_entry_attributes {
++	struct {
++		u64 required_to_function:1;
++		u64 no_block_io_protocol:1;
++		u64 legacy_bios_bootable:1;
++		u64 reserved:45;
++		u64 type_guid_specific:16;
++	} fields;
++	unsigned long long raw;
++} __packed gpt_entry_attributes;
++
++#define PARTNAME_SZ	(72 / sizeof(efi_char16_t))
++typedef struct _gpt_entry {
++	efi_guid_t partition_type_guid;
++	efi_guid_t unique_partition_guid;
++	__le64 starting_lba;
++	__le64 ending_lba;
++	gpt_entry_attributes attributes;
++	efi_char16_t partition_name[PARTNAME_SZ];
++} __packed gpt_entry;
++
++typedef struct _legacy_mbr {
++	u8 boot_code[440];
++	__le32 unique_mbr_signature;
++	__le16 unknown;
++	struct partition partition_record[4];
++	__le16 signature;
++} __packed legacy_mbr;
++
++#endif	/* _DISK_PART_EFI_H */
+diff --git a/lib/vsprintf.c b/lib/vsprintf.c
+index e38a4b7..b939326 100644
+--- a/lib/vsprintf.c
++++ b/lib/vsprintf.c
+@@ -121,6 +121,29 @@ int ustrtoul(const char *cp, char **endp, unsigned int base)
+ 	return result;
+ }
+ 
++unsigned long long ustrtoull(const char *cp, char **endp, unsigned int base)
++{
++       unsigned long long result = simple_strtoull(cp, endp, base);
++       switch (**endp) {
++       case 'G':
++               result *= 1024;
++               /* fall through */
++       case 'M':
++               result *= 1024;
++               /* fall through */
++       case 'K':
++       case 'k':
++               result *= 1024;
++               if ((*endp)[1] == 'i') {
++                       if ((*endp)[2] == 'B')
++                               (*endp) += 3;
++                       else
++                               (*endp) += 2;
++               }
++       }
++      return result;
++}
++
+ unsigned long long simple_strtoull (const char *cp, char **endp, unsigned int base)
+ {
+ 	unsigned long long result = 0, value;
+diff --git a/nand_spl/board/broadcom/bcm95634x/Makefile b/nand_spl/board/broadcom/bcm95634x/Makefile
+index 68e461a..ca6de4b 100644
+--- a/nand_spl/board/broadcom/bcm95634x/Makefile
++++ b/nand_spl/board/broadcom/bcm95634x/Makefile
+@@ -43,7 +43,13 @@ OBJS	:= $(addprefix $(obj),$(SOBJS) $(COBJS))
+ __OBJS	:= $(SOBJS) $(COBJS)
+ LNDIR	:= $(nandobj)board/$(BOARDDIR)
+ 
+-PAD_TO  := $(shell expr $$[$(CONFIG_IPROC_NAND_SPL_SYS_TEXT_BASE) + $(CONFIG_IPROC_NAND_SPL_MAX_SIZE)])
++#PAD_TO  := $(shell expr $$[$(CONFIG_IPROC_NAND_SPL_SYS_TEXT_BASE) + $(CONFIG_IPROC_NAND_SPL_MAX_SIZE)])
++#PAD_TO  := $(CONFIG_IPROC_NAND_SPL_SYS_TEXT_BASE) + $(CONFIG_IPROC_NAND_SPL_MAX_SIZE)
++########################
++# expr do not support hex on our build server.
++# PAD_TO = CONFIG_IPROC_NAND_SPL_SYS_TEXT_BASE + CONFIG_IPROC_NAND_SPL_MAX_SIZE
++#    hard code it.
++PAD_TO  := 0x1c001000
+ 
+ ALL	= $(nandobj)u-boot-nand_spl $(nandobj)u-boot-nand_spl.bin
+ 
+diff --git a/spl/Makefile b/spl/Makefile
+index 977f2c5..8278603 100644
+--- a/spl/Makefile
++++ b/spl/Makefile
+@@ -38,7 +38,7 @@ LIBS-y += $(CPUDIR)/lib$(CPU).o
+ ifdef SOC
+ LIBS-y += $(CPUDIR)/$(SOC)/lib$(SOC).o
+ endif
+-LIBS-y += board/$(BOARDDIR)/lib$(BOARD).o
++LIBS-y += board/$(BOARDDIR)/lib$(BOARD).o drivers/i2c/libi2c.o
+ LIBS-$(HAVE_VENDOR_COMMON_LIB) += board/$(VENDOR)/common/lib$(VENDOR).o
+ 
+ LIBS-$(CONFIG_SPL_FRAMEWORK) += common/spl/libspl.o
+@@ -53,7 +53,7 @@ LIBS-$(CONFIG_SPL_SPI_SUPPORT) += drivers/spi/libspi.o
+ LIBS-$(CONFIG_SPL_FAT_SUPPORT) += fs/fat/libfat.o
+ LIBS-$(CONFIG_SPL_LIBGENERIC_SUPPORT) += lib/libgeneric.o
+ LIBS-$(CONFIG_SPL_POWER_SUPPORT) += drivers/power/libpower.o
+-LIBS-$(CONFIG_SPL_NAND_SUPPORT) += drivers/mtd/nand/libnand.o
++LIBS-$(CONFIG_SPL_NAND_SUPPORT) += drivers/mtd/nand/libnand.o drivers/mtd/libmtd.o
+ LIBS-$(CONFIG_SPL_ONENAND_SUPPORT) += drivers/mtd/onenand/libonenand.o
+ LIBS-$(CONFIG_SPL_DMA_SUPPORT) += drivers/dma/libdma.o
+ LIBS-$(CONFIG_SPL_POST_MEM_SUPPORT) += post/drivers/memory.o
+
