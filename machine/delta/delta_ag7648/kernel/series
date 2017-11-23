@@ -1,0 +1,3 @@
+platform-ag7648.patch
+platform-ag7648-comment-out-the-mount-type-error-message.patch
+add-the-igb-driver-for-the-bcm54616-phy.patch
