@@ -1,0 +1,22 @@
+diff --git a/drivers/platform/x86/Kconfig b/drivers/platform/x86/Kconfig
+index 5ae65c1..aa8b140 100644
+--- a/drivers/platform/x86/Kconfig
++++ b/drivers/platform/x86/Kconfig
+@@ -827,4 +827,17 @@ config INTEL_BAYTRAIL_MBI
+ 	  Interface. This is a requirement for systems that need to configure
+ 	  the PUNIT for power management features such as RAPL.
+ 
++config DELTA_AG8032
++	tristate "DELTA AG8032  Platform Support"
++	depends on X86 && PCI
++	select I2C_ISCH
++	select I2C_ISMT
++	select GPIO_SCH
++	select MFD_CORE
++	select LPC_SCH
++	---help---
++	 Enable support for DELTA AG8032 switching platform.  This
++	 platform has a C2000 Atom (Rangeley) CPU module, a Broadcom
++	 Trident2/Trident2+ switch ASIC. It has 48x10G Copper and 6x40G QSFP ports.
++
+ endif # X86_PLATFORM_DEVICES
