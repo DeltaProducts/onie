@@ -1,0 +1,3 @@
+platform-ag6248c_poe.patch
+platform-ag6248c_poe-nand-flash-driver.patch
+platform-ag6248c_poe-add-the-gpt-support.patch
