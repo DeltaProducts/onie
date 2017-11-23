@@ -1,0 +1,47 @@
+From 671b57fe81b6f02d83b2dd9f1ee63c806078a2b6 Mon Sep 17 00:00:00 2001
+From: Dave Hu <dave.hu@agemasystems.com>
+Date: Tue, 26 Sep 2017 04:33:58 -0400
+Subject: [PATCH] comment out the mount type error message
+
+---
+ fs/ext2/super.c | 6 +++---
+ fs/ext3/super.c | 6 +++---
+ 2 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/fs/ext2/super.c b/fs/ext2/super.c
+index 94b9e32..43ff587 100644
+--- a/fs/ext2/super.c
++++ b/fs/ext2/super.c
+@@ -871,9 +871,9 @@ static int ext2_fill_super(struct super_block *sb, void *data, int silent)
+ 	 */
+ 	features = EXT2_HAS_INCOMPAT_FEATURE(sb, ~EXT2_FEATURE_INCOMPAT_SUPP);
+ 	if (features) {
+-		ext2_msg(sb, KERN_ERR,	"error: couldn't mount because of "
+-		       "unsupported optional features (%x)",
+-			le32_to_cpu(features));
++		//ext2_msg(sb, KERN_ERR,	"error: couldn't mount because of "
++		//       "unsupported optional features (%x)",
++		//	le32_to_cpu(features));
+ 		goto failed_mount;
+ 	}
+ 	if (!(sb->s_flags & MS_RDONLY) &&
+diff --git a/fs/ext3/super.c b/fs/ext3/super.c
+index 562ede3..e7b11f3 100644
+--- a/fs/ext3/super.c
++++ b/fs/ext3/super.c
+@@ -1748,9 +1748,9 @@ static int ext3_fill_super (struct super_block *sb, void *data, int silent)
+ 	 */
+ 	features = EXT3_HAS_INCOMPAT_FEATURE(sb, ~EXT3_FEATURE_INCOMPAT_SUPP);
+ 	if (features) {
+-		ext3_msg(sb, KERN_ERR,
+-			"error: couldn't mount because of unsupported "
+-			"optional features (%x)", le32_to_cpu(features));
++		//ext3_msg(sb, KERN_ERR,
++		//	"error: couldn't mount because of unsupported "
++		//	"optional features (%x)", le32_to_cpu(features));
+ 		goto failed_mount;
+ 	}
+ 	features = EXT3_HAS_RO_COMPAT_FEATURE(sb, ~EXT3_FEATURE_RO_COMPAT_SUPP);
+-- 
+2.1.4
+

@@ -1,0 +1,26 @@
+From c57d655d0e520404090dca7742181a26d3fd7f76 Mon Sep 17 00:00:00 2001
+From: Dave Hu <dave.hu@agemasystems.com>
+Date: Wed, 23 Aug 2017 11:36:10 -0400
+Subject: [PATCH] platform ag6248c add the gpt support
+
+---
+ include/configs/helix4.h | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/include/configs/helix4.h b/include/configs/helix4.h
+index d039055..5d9db83 100644
+--- a/include/configs/helix4.h
++++ b/include/configs/helix4.h
+@@ -40,7 +40,8 @@
+ #define CONFIG_USB_EHCI_IPROC
+ #define CONFIG_USB_STORAGE
+ #define CONFIG_CMD_FAT
+-/* #define CONFIG_DOS_PARTITION */
++#define CONFIG_DOS_PARTITION
++#define CONFIG_EFI_PARTITION
+ #define CONFIG_LEGACY_USB_INIT_SEQ
+ #endif
+ 
+-- 
+2.1.4
+
