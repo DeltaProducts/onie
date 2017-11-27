@@ -1,0 +1,37 @@
+From 3f058c20eec6f4383cff37c1882288aefee46023 Mon Sep 17 00:00:00 2001
+From: Dave Hu <dave.hu@agemasystems.com>
+Date: Mon, 9 Oct 2017 11:54:38 -0400
+Subject: [PATCH] platform-ag7648
+
+---
+ drivers/platform/x86/Kconfig | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+ mode change 100644 => 100755 drivers/platform/x86/Kconfig
+
+diff --git a/drivers/platform/x86/Kconfig b/drivers/platform/x86/Kconfig
+old mode 100644
+new mode 100755
+index 5ae65c1..eed39eb
+--- a/drivers/platform/x86/Kconfig
++++ b/drivers/platform/x86/Kconfig
+@@ -826,5 +826,17 @@ config INTEL_BAYTRAIL_MBI
+ 	  Needed on Baytrail platforms for access to the IOSF Sideband Mailbox
+ 	  Interface. This is a requirement for systems that need to configure
+ 	  the PUNIT for power management features such as RAPL.
++config DELTA_AG7648
++	tristate "DELTA AG7648  Platform Support"
++	depends on X86 && PCI
++	select I2C_ISCH
++	select I2C_ISMT
++	select GPIO_SCH
++	select MFD_CORE
++	select LPC_SCH
++	---help---
++	Enable support for DELTA AG7648 switching platform.  This
++	platform has a C2000 Atom (Rangeley) CPU module, a Broadcom
++	Trident2/Trident2+ switch ASIC. It has 48x10G Copper and 6x40G QSFP ports.
+ 
+ endif # X86_PLATFORM_DEVICES
+-- 
+2.1.4
+
