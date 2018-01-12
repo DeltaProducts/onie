@@ -126,9 +126,6 @@ endif
 PHONY += sysroot-check sysroot-complete
 
 CHECKROOT	= $(MBUILDDIR)/check
-CHECKDIR	= $(CHECKROOT)/checkdir
-CHECKFILES	= $(CHECKROOT)/checkfiles.txt
-SYSFILES	= $(CHECKROOT)/sysfiles.txt
 
 ifeq ($(XTOOLS_LIBC),uClibc-ng)
   SYSROOT_LIBS	= ld$(CLIB64)-uClibc.so.0 ld$(CLIB64)-uClibc-$(XTOOLS_LIBC_VERSION).so \
@@ -219,19 +216,11 @@ $(SYSROOT_CHECK_STAMP): $(PACKAGES_INSTALL_STAMPS)
 	done
 	$(Q) find $(SYSROOTDIR) -path */lib/grub/* -prune -o \( -type f -print0 \) | xargs -0 file | \
 		grep ELF | awk -F':' '{ print $$1 }' | grep -v "/lib/modules/" | xargs $(CROSSBIN)/$(CROSSPREFIX)strip
+ifeq ($(XTOOLS_ENABLE),yes)
 	$(Q) rm -rf $(CHECKROOT)
-        ifeq ($(XTOOLS_ENABLE),yes)
-	  $(Q) mkdir -p $(CHECKROOT) && \
-	      $(CROSSBIN)/$(CROSSPREFIX)populate -r $(DEV_SYSROOT) \
-		  -s $(SYSROOTDIR) -d $(CHECKDIR) && \
-		  (cd $(SYSROOTDIR) && find . | LC_ALL=C sort > $(SYSFILES)) && \
-		  (cd $(CHECKDIR) && find . | LC_ALL=C sort > $(CHECKFILES)) && \
-		  diff -q $(SYSFILES) $(CHECKFILES) > /dev/null 2>&1 || { \
-			  (echo "ERROR: Missing files in SYSROOTDIR:" && \
-			   diff $(SYSFILES) $(CHECKFILES) ; \
-			   false) \
-		  }
-       endif
+	$(Q) $(SCRIPTDIR)/check-libs $(CROSSBIN)/$(CROSSPREFIX)populate \
+		$(DEV_SYSROOT) $(SYSROOTDIR) $(CHECKROOT)
+endif
 	$(Q) touch $@
 
 # Setting ONIE_BUILD_MACHINE on the command line allows you "fake" a
@@ -283,6 +272,7 @@ $(SYSROOT_COMPLETE_STAMP): $(SYSROOT_CHECK_STAMP)
 	$(Q) echo "onie_build_machine=$(ONIE_BUILD_MACHINE)" >> $(MACHINE_CONF)
 	$(Q) echo "onie_machine_rev=$(MACHINE_REV)" >> $(MACHINE_CONF)
 	$(Q) echo "onie_arch=$(ARCH)" >> $(MACHINE_CONF)
+	$(Q) echo "onie_build_platform=$(ARCH)-$(ONIE_BUILD_MACHINE)-r$(MACHINE_REV)" >> $(MACHINE_CONF)
 	$(Q) echo "onie_config_version=$(ONIE_CONFIG_VERSION)" >> $(MACHINE_CONF)
 	$(Q) echo "onie_build_date=\"$(ONIE_BUILD_DATE)\"" >> $(MACHINE_CONF)
 	$(Q) echo "onie_partition_type=$(PARTITION_TYPE)" >> $(MACHINE_CONF)
@@ -360,6 +350,7 @@ $(IMAGE_UPDATER_STAMP): $(UPDATER_IMAGE_PARTS_COMPLETE) $(UPDATER_IMAGE_PARTS_PL
 	$(Q) CONSOLE_SPEED=$(CONSOLE_SPEED) \
 	     CONSOLE_DEV=$(CONSOLE_DEV) \
 	     CONSOLE_PORT=$(CONSOLE_PORT) \
+	     GRUB_TIMEOUT=$(GRUB_TIMEOUT) \
 	     UPDATER_UBOOT_NAME=$(UPDATER_UBOOT_NAME) \
 	     EXTRA_CMDLINE_LINUX="$(EXTRA_CMDLINE_LINUX)" \
 	     SERIAL_CONSOLE_ENABLE=$(SERIAL_CONSOLE_ENABLE) \
