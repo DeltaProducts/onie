@@ -14,6 +14,7 @@ ARCH        ?= x86_64
 TARGET      ?= $(ARCH)-onie-linux-uclibc
 CROSSPREFIX ?= $(TARGET)-
 CROSSBIN    ?= $(XTOOLS_INSTALL_DIR)/$(TARGET)/bin
+EFI_ARCH    ?= x64
 
 #
 # Console parameters
@@ -88,7 +89,8 @@ ifeq ($(PXE_EFI64_ENABLE),yes)
 endif
 
 UPDATER_IMAGE_PARTS = $(UPDATER_VMLINUZ) $(UPDATER_INITRD) $(UPDATER_ONIE_TOOLS) \
-			$(ROOTCONFDIR)/grub-arch/sysroot-lib-onie/onie-blkdev-common
+			$(ROOTCONFDIR)/grub-arch/sysroot-lib-onie/onie-blkdev-common \
+			$(ROOTCONFDIR)/grub-arch/sysroot-lib-onie/nos-mode-arch
 
 UPDATER_IMAGE_PARTS_COMPLETE = $(KERNEL_INSTALL_STAMP) $(UPDATER_INITRD) $(UPDATER_ONIE_TOOLS)
 
@@ -120,7 +122,6 @@ BTRFS_PROGS_ENABLE = yes
 
 # Include GRUB tools
 GRUB_ENABLE = yes
-GRUB_IMAGE_NAME = grubx64.efi
 
 # Default to include the i2ctools.  A particular machine.make can
 # override this.
