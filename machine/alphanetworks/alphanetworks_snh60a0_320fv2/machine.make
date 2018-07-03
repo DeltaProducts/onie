@@ -1,7 +1,6 @@
 # Alpha Networks SNH60A0-320Fv2
 
 ONIE_ARCH ?= x86_64
-SWITCH_ASIC_VENDOR = bcm
 
 VENDOR_REV ?= 0
 
