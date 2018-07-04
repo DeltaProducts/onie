@@ -82,7 +82,7 @@ index 960a99c..7f7dc32 100644
  	    "mtdparts=mtdparts=nand_iproc.0:1m(uboot),2m(shmoo),1m(nenv),12m(onie),3992m(open),12m(onie2),2m(vpd),6m(sys_eeprom),16m(diags),16m(diags2),32m(diags_fs)\0"  \
  	    "mtdids=nand0=nand_iproc.0\0"  \
 -	"platformargs=mtdparts=nand_iproc.0:1m(uboot),2m(shmoo),1m(nenv),12m(onie),3992m(open),12m(onie2),2m(vpd),6m(sys_eeprom),16m(diags),16m(diags2),32m(diags_fs)  maxcpus=2 mem=1024M\0"
-+	"platformargs=mtdparts=nand_iproc.0:1m(uboot),2m(shmoo),1m(nenv),12m(onie),3992m(open),12m(onie2),2m(vpd),6m(sys_eeprom),16m(diags),16m(diags2),32m(diags_fs)  maxcpus=2 mem=2048M\0"
++	"platformargs=mtdparts=nand_iproc.0:1m(uboot),2m(shmoo),1m(nenv),12m(onie),3992m(open),12m(onie2),2m(vpd),6m(sys_eeprom),16m(diags),16m(diags2),32m(diags_fs)  maxcpus=2 mem=2032M\0"
  	
  
  #define        CONFIG_EXTRA_ENV_SETTINGS       \
