@@ -1,0 +1,43 @@
+From 73ab919be4ddbe543dfae76eabd14ef053a8beb3 Mon Sep 17 00:00:00 2001
+From: "zhaoyang.tian" <zhaoyang.tian@deltaww.com>
+Date: Wed, 10 Jan 2018 18:20:48 +0800
+Subject: [PATCH] disable i2c mux when idle
+
+---
+ drivers/i2c/muxes/i2c-mux-pca954x.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/i2c/muxes/i2c-mux-pca954x.c b/drivers/i2c/muxes/i2c-mux-pca954x.c
+index 9c4ac26..916e61d 100644
+--- a/drivers/i2c/muxes/i2c-mux-pca954x.c
++++ b/drivers/i2c/muxes/i2c-mux-pca954x.c
+@@ -235,7 +235,7 @@ static int pca954x_probe(struct i2c_client *client,
+ 	gpio = devm_gpiod_get_optional(&client->dev, "reset", GPIOD_OUT_LOW);
+ 	if (IS_ERR(gpio))
+ 		return PTR_ERR(gpio);
+-
++#if 0
+ 	/* Write the mux register at addr to verify
+ 	 * that the mux is in fact present. This also
+ 	 * initializes the mux to disconnected state.
+@@ -244,7 +244,7 @@ static int pca954x_probe(struct i2c_client *client,
+ 		dev_warn(&client->dev, "probe failed\n");
+ 		return -ENODEV;
+ 	}
+-
++#endif
+ 	match = of_match_device(of_match_ptr(pca954x_of_match), &client->dev);
+ 	if (match)
+ 		data->chip = of_device_get_match_data(&client->dev);
+@@ -256,6 +256,8 @@ static int pca954x_probe(struct i2c_client *client,
+ 	idle_disconnect_dt = of_node &&
+ 		of_property_read_bool(of_node, "i2c-mux-idle-disconnect");
+ 
++	idle_disconnect_dt = 1;
++
+ 	/* Now create an adapter for each channel */
+ 	for (num = 0; num < data->chip->nchans; num++) {
+ 		bool idle_disconnect_pd = false;
+-- 
+2.7.4
+

@@ -1,0 +1,84 @@
+# -*- shell-script -*-
+
+#  Copyright (C) 2014 Curt Brune <curt@cumulusnetworks.com>
+#
+#  SPDX-License-Identifier:     GPL-2.0
+
+# Demonstration of the init-platform functionality
+
+# This script fragment is sourced by /etc/init.d/init-arch.sh, which
+# in turn executes the init_platform_pre_arch() and
+# init_platform_post_arch() functions.
+
+# A machine can use this feature to run any early boot scripts needed
+# by the machine.  A typical usage would be to initialize specific
+# hardware devices.
+
+# Use this function to perform any initializations required by the
+# architecture specific initialization.  This function executes before
+# the architecture initializations.
+init_platform_pre_arch()
+{
+    echo "Running network config..."
+
+	if [ ! -d /sys/bus/i2c/devices/2-0070 ]
+	then
+		echo "pca9544 0x70" > /sys/bus/i2c/devices/i2c-2/new_device
+		i2cget -y 6 0x30 0x20 > /tmp/reboot_value.txt
+	fi
+
+	ip link set eth0 down
+	ip link set dev eth0 name real_eth0
+	ip link set eth1 down
+	ip link set dev eth1 name real_eth1
+
+	echo +trunk0 > /sys/class/net/bonding_masters
+	sleep 1
+	echo 1       > /sys/devices/virtual/net/trunk0/bonding/mode
+	echo 100     > /sys/devices/virtual/net/trunk0/bonding/miimon
+	echo failure > /sys/devices/virtual/net/trunk0/bonding/primary_reselect
+
+	echo +real_eth0 > /sys/devices/virtual/net/trunk0/bonding/slaves
+	echo +real_eth1 > /sys/devices/virtual/net/trunk0/bonding/slaves
+	ip link set dev trunk0 up
+
+	ip link add link trunk0 name eth0 type vlan id 1
+	ip link set dev eth0 up
+
+	ip link add link trunk0 name eth1 type vlan id 99
+	ip link set dev eth1 up
+
+	slot_id=`i2cget -y 7 0x31 0x00`
+	slot_id=`printf %d $slot_id`
+	slot_id=$(($slot_id >> 4))
+
+	ifconfig eth1 169.254.0.$slot_id
+
+
+	echo "Completing bootup event..."
+
+	echo "0x04 0x1f 0x00 0x6f 0x06 0xff 0xff" > /tmp/sel_bootcomplete && {
+	ipmitool sel add /tmp/sel_bootcomplete 2>/dev/null 1>/dev/null
+	}
+
+
+	echo "Setting system led..."
+
+	i2cset -y 7 0x31 0x0a 0x0c
+
+	
+	echo "Sending version infomation to bmc..."
+
+
+	OS_VER="Onie_`cat /etc/machine-build.conf | grep \"onie_build_machine\" | awk -F \"=\" '{print $2}' 2>/dev/null`"
+	OS_BUD="`cat /etc/machine-build.conf | grep \"onie_build_date\" | awk -F \"=\" '{print $2}' 2>/dev/null`"
+	OS_STR=`echo -n "OS=$OS_VER $OS_BUD" | sed 's/ /_/g'`
+
+	ipmitool mc setsysinfo primary_os_name "$OS_STR" 2>/dev/null
+	ipmitool mc setsysinfo os_name "$OS_STR" 2>/dev/null
+
+	echo "Disable watchdog..."
+	
+	ipmitool raw 0x30 0x57 0x00 0x00
+}
+

@@ -1,0 +1,6 @@
+igb_bcm54616s.patch
+add-me-pmbus-proxy-i2c-driver.patch
+add-me-interface.patch
+disable-i2c-mux-when-idle.patch
+ismt-dsc100.patch
+add-reboot-event-to-ipmi.patch 
